@@ -3,8 +3,13 @@
   "version": "2.0.0",
   "description": "Bot for ZimBaBwe Discord Server",
   "main": "bot.js",
+  "watch": {
+    "build": "*.js"
+  },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "node bot.js",
+    "watch": "npm-watch"
   },
   "repository": {
     "type": "git",
