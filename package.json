@@ -1,0 +1,19 @@
+{
+  "name": "zimbro",
+  "version": "2.0.0",
+  "description": "Bot for ZimBaBwe Discord Server",
+  "main": "bot.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://gitlab.com/FlawTECH/ZimBroRevamped.git"
+  },
+  "author": "FlawTECH",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://gitlab.com/FlawTECH/ZimBroRevamped/issues"
+  },
+  "homepage": "https://gitlab.com/FlawTECH/ZimBroRevamped#README"
+}
