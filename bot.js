@@ -303,13 +303,14 @@ function processCommand(msg) {
     args.splice(0,1);
 
     if(command == "help") {
+        // General help
         if(args.length === 0) {
 
             description = "**Command List**\n\r"
             propCount = Object.keys(commands).length;
             printedProps = 1;
             for(var prop in commands) {
-                description += "**`"+prefs.prefix+prop+"`** - ***"+commands[prop].description+(printedProps<propCount?"***\n\r":"***\n\r\n\r");
+                description += "**`"+prefs.prefix+prop+"`** - ***"+commands[prop].description+(printedProps<propCount?"***\n\r":"***");
                 printedProps++;
             }
 
@@ -336,11 +337,30 @@ function processCommand(msg) {
             msg.channel.send({
                 embed: helpJson
             });
-            return;
         }
+        // Subcommands help
         else {
-
+            msg.channel.send({
+                embed: {
+                color: 8603131,
+                author: {
+                    name: client.user.username,
+                    icon_url: client.user.avatarURL
+                },
+                fields: [
+                    {
+                        name: "Error",
+                        value: ":x: Work in progress",
+                    },
+                ],
+                "footer": {
+                    "icon_url": msg.author.avatarURL,
+                    "text": "'"+msg.content.split(" ")[0].substring(prefs.prefix.length)+"' issued by "+msg.author.tag
+                }
+                }
+            });
         }
+        return;
     }
     // If malformed or invalid command
     else if(commands[command] == null) {
