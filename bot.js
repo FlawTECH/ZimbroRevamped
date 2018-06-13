@@ -90,7 +90,7 @@ commands = {
 
     "imgedit": {
         description: "Image manipulation toolbox",
-        subcommands: ["resize", "greyscale", "flip", "rotate"],
+        subcommands: ["resize", "grey", "mirror", "rotate", "pride", "blur", "sepia", "poster"],
         summon: function(msg, args) {
 
             // No args
@@ -160,11 +160,11 @@ commands = {
                         img.getBuffer(mime, (err, buf) => { sendImageAsBuffer(err, buf, ":white_check_mark: Your image has been resized to "+parseInt(args[1])+"x"+parseInt(args[2])+" pixels.") }, mime, extension);
                     }
                 }
-                else if(args[0] === "greyscale") {
+                else if(args[0] === "grey") {
                     img = img.greyscale();
                     img.getBuffer(mime, (err, buf) => { sendImageAsBuffer(err, buf, ":white_check_mark: Your image has been greyed out.") }, mime, extension);
                 }
-                else if(args[0] === "flip") {
+                else if(args[0] === "mirror") {
                     if(enoughArgs(1, args, msg)) {
                         isHorizontal = args[1] === "h"
                         img = img.flip(isHorizontal, !isHorizontal);
@@ -182,7 +182,39 @@ commands = {
                         })
                     }
                 }
-                    
+                else if(args[0] === "pride") {
+                    jimp.read('mask/pride.png', (err, masked) => {
+                        masked.resize(img.bitmap.width, img.bitmap.height);
+                        masked.opacity(0.3, (err, fadedMask) => {
+                            img.composite(fadedMask, 0, 0, (err, finalImg) => {
+                                finalImg.getBuffer(mime, (err, buf) => { sendImageAsBuffer(err, buf, ":white_check_mark: Image has been gayed out", mime, extension) });
+                            });
+                        })
+                    });
+                }
+                else if(args[0] === "blur") {
+                    if(enoughArgs(1, args, msg)) {
+                        pixels = parseInt(args[1]);
+                        img = img.blur(pixels>100?100:pixels);
+                        img.getBuffer(mime, (err, buf) => { sendImageAsBuffer(err, buf, ":white_check_mark: Image has been blurred by "+ (pixels>100?100:pixels) +" pixels",mime, extension) });
+                    }
+                }
+                else if(args[0] === "sepia") {
+                    img.sepia((err, sepiad) => {
+                        sepiad.getBuffer(mime, (err, buf) => { sendImageAsBuffer(err, buf, ":white_check_mark: Image has been aged out", mime, extension) });
+                    });
+                }
+                else if(args[0] === "poster") {
+                    if (enoughArgs(1, args, msg)) {
+                        level = parseInt(args[1]);
+                        img.posterize(level, (err, postered) => { 
+                            postered.getBuffer(mime, (err, buf) => { 
+                                sendImageAsBuffer(err, buf, ":white_check_mark: Image has been posterized (level "+level+")");
+                             });
+                         });
+                    }
+                }
+
             }).catch(function (err) {
                 sendEmbeddedMessage(msg, ":x: An error has occured.\n\r`"+err+"`");
             });
