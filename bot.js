@@ -64,6 +64,18 @@ function getCurrentCommand(msg) {
     return msg.content.split(" ")[0].substring(prefs.prefix.length);
 }
 
+function measureText(font, text) {
+    var x = 0;
+    for (var i = 0; i < text.length; i++) {
+        if (font.chars[text[i]]) {
+            x += font.chars[text[i]].xoffset
+              + (font.kernings[text[i]] && font.kernings[text[i]][text[i+1]] ? font.kernings[text[i]][text[i+1]] : 0)
+              + (font.chars[text[i]].xadvance || 0);
+        }
+    }
+    return x;
+};
+
 commands = {
     "ping": {
         description: "Shows the delay between the bot and Discord servers",
@@ -90,7 +102,7 @@ commands = {
 
     "imgedit": {
         description: "Image manipulation toolbox",
-        subcommands: ["resize", "grey", "mirror", "rotate", "pride", "blur", "sepia", "poster"],
+        subcommands: ["resize", "grey", "mirror", "rotate", "pride", "blur", "sepia", "poster","addtext"],
         summon: function(msg, args) {
 
             // No args
@@ -128,6 +140,54 @@ commands = {
                         attachment: buf,
                         name: 'image.'+extension
                     }]
+                });
+            }
+
+            function writeArrayToImage(textArray, img, fontSize, mime, extension) {
+                availableSizes = [8, 10, 12, 14, 16, 32, 64, 128];
+                heightForSizes = [6, 7, 8, 9, 10, 20, 35, 52]
+                jimp.loadFont("font/upheaval"+fontSize+".fnt", (err, font) => {
+                    // Preparing text lines
+                    thisLine = 0;
+                    lines = [];
+                    first = true;
+                    for(var i=0; i<textArray.length; i++) {
+                        if(lines[thisLine] === undefined) {
+                            lines[thisLine] = "";
+                            first = true;
+                        }
+                        else {
+                            first = false;
+                        }
+                        if(measureText(font, lines[thisLine] +" "+ textArray[i]) < img.bitmap.width-img.bitmap.width*0.06) {
+                            lines[thisLine]+=first?textArray[i]:" "+textArray[i];
+                        }
+                        else if(!first) {
+                            if(availableSizes.indexOf(fontSize) > 0 && lines[thisLine] !== undefined && lines[thisLine].split(' ').length<3) {
+                                return writeArrayToImage(textArray, img, availableSizes[availableSizes.indexOf(fontSize)-1], mime, extension);
+                            }
+                            thisLine++;
+                            i--;
+                        }
+                        else {
+                            if(availableSizes.indexOf(fontSize) === 0) {
+                                sendEmbeddedMessage(msg, ":x: Text won't fit. Please consider using a bigger image or smaller words");
+                                return;
+                            }
+                            else {
+                                return writeArrayToImage(textArray, img, availableSizes[availableSizes.indexOf(fontSize)-1], mime, extension);
+                            }
+                        }
+                    }
+                    // Printing text on image
+                    for(var i=0; i<lines.length; i++) {
+                        img.print(font, img.bitmap.width*0.03, (i*heightForSizes[availableSizes.indexOf(fontSize)])+(i*3), lines[i]);
+                    }
+
+                    // Sending image
+                    img.getBuffer(mime, (err, buf) => {
+                        sendImageAsBuffer(err, buf, ":white_check_mark: Text added on image", mime, extension);
+                    });
                 });
             }
             
@@ -212,6 +272,12 @@ commands = {
                                 sendImageAsBuffer(err, buf, ":white_check_mark: Image has been posterized (level "+level+")");
                              });
                          });
+                    }
+                }
+                else if(args[0] === "addtext") {
+                    if(enoughArgs(1, args, msg)) {
+                        textArray = args.slice(1);
+                        img = writeArrayToImage(textArray, img, 128, mime, extension);
                     }
                 }
 
