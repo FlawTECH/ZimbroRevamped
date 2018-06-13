@@ -3,7 +3,6 @@ const client = new Discord.Client();
 const prefs = require('./settings.json');
 const crypto = require('crypto');
 const jimp = require('jimp');
-const stream = require('stream');
 
 function sendEmbeddedMessage(msg, text, image) {
 
@@ -19,7 +18,7 @@ function sendEmbeddedMessage(msg, text, image) {
                     url: image
                 },
                 fields: [{
-                    name: "Error",
+                    name: "Message",
                     value: text
                 }],
                 footer: {
@@ -52,6 +51,19 @@ function sendEmbeddedMessage(msg, text, image) {
     
 }
 
+function enoughArgs(min, args, msg) {
+    if(args.length < min+1) {
+        cmd = getCurrentCommand(msg);
+        sendEmbeddedMessage(msg, ':x: Not enough arguments. Please type `'+prefs.prefix+"help "+cmd+" "+args[0]+"` for more info");
+        return false;
+    }
+    return true;
+}
+
+function getCurrentCommand(msg) {
+    return msg.content.split(" ")[0].substring(prefs.prefix.length);
+}
+
 commands = {
     "ping": {
         description: "Shows the delay between the bot and Discord servers",
@@ -78,7 +90,7 @@ commands = {
 
     "imgedit": {
         description: "Image manipulation toolbox",
-        subcommands: ["resize", "crop", "grayscale"],
+        subcommands: ["resize", "greyscale", "flip", "rotate"],
         summon: function(msg, args) {
 
             // No args
@@ -94,7 +106,7 @@ commands = {
             }
 
             // Used to send a modified image
-            function sendImageAsBuffer(err, buf) {
+            function sendImageAsBuffer(err, buf, text, mime, ext) {
                 // Sending resized image
                 msg.channel.send({
                     embed: {
@@ -105,7 +117,7 @@ commands = {
                         },
                         fields: [{
                             name: "Success !",
-                            value: ":white_check_mark: Your image has been resized to "+parseInt(args[1])+"x"+parseInt(args[2])+" pixels."
+                            value: text
                         }],
                         footer: {
                             icon_url: msg.author.avatarURL,
@@ -124,7 +136,7 @@ commands = {
 
                 // Getting image info
                 extension = msg.attachments.first().filename.split(".")[msg.attachments.first().filename.split(".").length-1];
-                var mime = jimp.MIME_JPEG;
+                mime = jimp.MIME_JPEG;
                 if(extension === "png") {
                     mime = jimp.MIME_PNG;
                 }
@@ -134,16 +146,41 @@ commands = {
                 
                 // Image edition
                 if(args[0] === "resize") {
-                    width = parseInt(args[1]);
-                    height = parseInt(args[2]);
+                    if(enoughArgs(2, args, msg)) {
 
-                    if(width>5000 || height>5000) {
-                        sendEmbeddedMessage(msg, ":x: Width and height are limited to 5000 pixels to spare some bandwidth");
-                        return;
+                        width = parseInt(args[1]);
+                        height = parseInt(args[2]);
+
+                        if(width>5000 || height>5000) {
+                            sendEmbeddedMessage(msg, ":x: Width and height are limited to 5000 pixels to spare some bandwidth");
+                            return;
+                        }
+
+                        img = img.resize(parseInt(args[1]), parseInt(args[2]));
+                        img.getBuffer(mime, (err, buf) => { sendImageAsBuffer(err, buf, ":white_check_mark: Your image has been resized to "+parseInt(args[1])+"x"+parseInt(args[2])+" pixels.") }, mime, extension);
                     }
-
-                    img = img.resize(parseInt(args[1]), parseInt(args[2]));
-                    img.getBuffer(mime, sendImageAsBuffer);
+                }
+                else if(args[0] === "greyscale") {
+                    img = img.greyscale();
+                    img.getBuffer(mime, (err, buf) => { sendImageAsBuffer(err, buf, ":white_check_mark: Your image has been greyed out.") }, mime, extension);
+                }
+                else if(args[0] === "flip") {
+                    if(enoughArgs(1, args, msg)) {
+                        isHorizontal = args[1] === "h"
+                        img = img.flip(isHorizontal, !isHorizontal);
+                        img.getBuffer(mime, (err, buf) => { sendImageAsBuffer(err, buf, ":white_check_mark Image flipped"+ isHorizontal?"horizontally":"vertically") }, mime, extension);
+                    }
+                }
+                else if(args[0] === "rotate") {
+                    if(enoughArgs(1, args, msg)) {
+                        deg = parseInt(args[1])
+                        img = img.rotate(deg);
+                        img = img.background(0x00000000, (err, newimg) => { 
+                            mime = jimp.MIME_PNG;
+                            extension = "png";
+                            newimg.getBuffer(jimp.MIME_PNG, (err, buf) => { sendImageAsBuffer(err, buf, ":white_check_mark: Image rotated by "+deg+" degrees") }, mime, extension);
+                        })
+                    }
                 }
                     
             }).catch(function (err) {
