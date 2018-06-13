@@ -302,8 +302,48 @@ function processCommand(msg) {
     args = msg.content.split(" ");
     args.splice(0,1);
 
+    if(command == "help") {
+        if(args.length === 0) {
+
+            description = "**Command List**\n\r"
+            propCount = Object.keys(commands).length;
+            printedProps = 1;
+            for(var prop in commands) {
+                description += "**`"+prefs.prefix+prop+"`** - ***"+commands[prop].description+(printedProps<propCount?"***\n\r":"***\n\r\n\r");
+                printedProps++;
+            }
+
+            helpJson = {
+                "color": 8603131,
+                "author": {
+                    "name": client.user.username,
+                    "icon_url": client.user.avatarURL
+                },
+                "description": description,
+                "fields": [
+                    {
+                        "name": "Tip :",
+                        "value": "Type **`"+prefs.prefix+"help <command>`** to learn how to use a specific command",
+                        "inline": true
+                    },
+                ],
+                "footer": {
+                    "icon_url": msg.author.avatarURL,
+                    "text": "'"+msg.content.split(" ")[0].substring(prefs.prefix.length)+"' issued by "+msg.author.tag
+                }
+            }
+
+            msg.channel.send({
+                embed: helpJson
+            });
+            return;
+        }
+        else {
+
+        }
+    }
     // If malformed or invalid command
-    if(commands[command] == null) {
+    else if(commands[command] == null) {
         sendEmbeddedMessage(msg, ":no_entry: Invalid command. Type `"+prefs.prefix+"help` for a list of available commands")
         return;
     }
