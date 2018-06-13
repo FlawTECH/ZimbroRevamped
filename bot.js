@@ -374,7 +374,7 @@ function processCommand(msg) {
 client.on('ready', () => {
     var id = crypto.randomBytes(10).toString('hex');
     console.log(`Logged in as ${client.user.tag}, build id: #`+id);
-    client.user.setPresence({game: {name: "Build #"+id}, status: 'online'});
+    client.user.setPresence({game: {name: prefs.prefix+"help | Build #"+id}, status: 'online'});
 });
 
 client.on('message', msg => {
