@@ -1,8 +1,10 @@
 const Discord = require('discord.js');
-const client = new Discord.Client();
 const prefs = require('./settings.json');
 const crypto = require('crypto');
 const jimp = require('jimp');
+
+const version = "1.2";
+const client = new Discord.Client();
 
 function sendEmbeddedMessage(msg, text, image) {
 
@@ -54,7 +56,7 @@ function sendEmbeddedMessage(msg, text, image) {
 function enoughArgs(min, args, msg) {
     if(args.length < min+1) {
         cmd = getCurrentCommand(msg);
-        sendEmbeddedMessage(msg, ':x: Not enough arguments. Please type `'+prefs.prefix+"help "+cmd+" "+args[0]+"` for more info");
+        sendEmbeddedMessage(msg, ':x: Too few arguments. Please type `'+prefs.prefix+"help "+cmd+" "+args[0]+"` for more info");
         return false;
     }
     return true;
@@ -102,12 +104,56 @@ commands = {
 
     "imgedit": {
         description: "Image manipulation toolbox",
-        subcommands: ["resize", "grey", "mirror", "rotate", "pride", "blur", "sepia", "poster","addtext"],
+        subcommands: {
+            "resize":{
+                description: "Resizes the image to the desired width and height",
+                usage: "<width> <height>",
+                example: "800 600"
+            }, 
+            "grey": {
+                description: "Removes colors from the image",
+            }, 
+            "mirror": {
+                description: "Flips the image, horizontally or vertically",
+                usage: "<h|v> (h = horizontal, v = vertical)",
+                example: "h"
+            },
+            "rotate": {
+                description: "Rotates the image to the desired angle",
+                usage: "<angle> (degrees)",
+                example: "130"
+            }, 
+            "pride": {
+                description: "Applies a gay pride filter to the image",
+            },
+            "blur": {
+                description: "Blurs out the image by the given intensity",
+                usage: "<intensity>",
+                example: "20"
+            }, 
+            "sepia": {
+                description: "Applies a sepia effect on the image to make it look older",
+            }, 
+            "poster": {
+                description: "Posterizes the image, making it look more cartoonish",
+                usage: "<intensity> (descending order)",
+                example: "5"
+            },
+            "addtext": {
+                description: "Adds a custom text on the image",
+                usage: "<text>",
+                example: "Kool Kids Klub"
+            }
+        },
         summon: function(msg, args) {
 
             // No args
-            if(args.length == 0 || !this.subcommands.includes(args[0])) {
-                sendEmbeddedMessage(msg, ":x: Invalid arguments. Type `"+prefs.prefix+"help imgedit` for more info");
+            if(args.length == 0) {
+                sendEmbeddedMessage(msg, ":x: Too few arguments. Type `"+prefs.prefix+"help "+Object.keys(commands)[Object.keys(commands).indexOf(command)]+"` for more info");
+                return;
+            }
+            else if(!Object.keys(this.subcommands).includes(args[0])) {
+                sendEmbeddedMessage(msg, ":x: Unknown argument(s). Type `"+prefs.prefix+"help "+Object.keys(commands)[Object.keys(commands).indexOf(command)]+"` for more info");
                 return;
             }
 
@@ -298,11 +344,12 @@ function processCommand(msg) {
     if(!isCleanMessage(msg))
         return;
     
-    command = msg.content.split(" ")[0].substring(prefs.prefix.length);
-    args = msg.content.split(" ");
+    command = msg.content.toLowerCase().split(" ")[0].substring(prefs.prefix.length);
+    args = msg.content.toLowerCase().split(" ");
     args.splice(0,1);
 
-    if(command == "help") {
+    //Special command, needs to be outside
+    if(command === "help") {
         // General help
         if(args.length === 0) {
 
@@ -310,7 +357,10 @@ function processCommand(msg) {
             propCount = Object.keys(commands).length;
             printedProps = 1;
             for(var prop in commands) {
-                description += "**`"+prefs.prefix+prop+"`** - ***"+commands[prop].description+(printedProps<propCount?"***\n\r":"***");
+                description += "**`"+prefs.prefix+prop+"`** - ***"+commands[prop].description
+                
+                
+                +(printedProps<propCount?"***\n\r":"***");
                 printedProps++;
             }
 
@@ -339,32 +389,51 @@ function processCommand(msg) {
             });
         }
         // Subcommands help
-        else {
+        else if(Object.keys(commands).includes(args[0])) {
+            // Printing main command to avoid empty help
+            description = "**Main command\n\r**`"+prefs.prefix+Object.keys(commands)[Object.keys(commands).indexOf(args[0])]+"` - ***"+commands[args[0]].description+"***\n"+
+            "**Usage:** `"+prefs.prefix+Object.keys(commands)[Object.keys(commands).indexOf(args[0])]+(commands[args[0]].usage===undefined?"":" "+commands[args[0]].usage)+"`\n"+
+            "**Example:** `"+prefs.prefix+Object.keys(commands)[Object.keys(commands).indexOf(args[0])]+(commands[args[0]].example===undefined?"":" "+commands[args[0]].example)+"`\n\r";
+            
+            // Counting amount of properties of the subcommand object
+            propCount = commands[args[0]].subcommands===undefined?0:Object.keys(commands[args[0]].subcommands).length;
+            printedProps = 1;
+
+            //Title
+            description += propCount===0?"":"**Subcommands**\n\r"
+            
+            // Adding each subcommand to description
+            for(var prop in commands[args[0]].subcommands) {
+                description += "**`"+prefs.prefix+args[0]+" "+prop+"`** - ***"+commands[args[0]].subcommands[prop].description+
+                    "***\n**Usage:** `"+prefs.prefix+Object.keys(commands)[Object.keys(commands).indexOf(args[0])]+" "+prop+(commands[args[0]].subcommands[prop].usage!==undefined?" "+commands[args[0]].subcommands[prop].usage:"")+
+                    "`\n**Example:** `"+prefs.prefix+Object.keys(commands)[Object.keys(commands).indexOf(args[0])]+" "+prop+(commands[args[0]].subcommands[prop].example!==undefined?" "+commands[args[0]].subcommands[prop].example:"")+
+                    (printedProps<propCount?"`\n\r":"`");
+                printedProps++;
+            }
+
             msg.channel.send({
                 embed: {
-                color: 8603131,
-                author: {
-                    name: client.user.username,
-                    icon_url: client.user.avatarURL
-                },
-                fields: [
-                    {
-                        name: "Error",
-                        value: ":x: Work in progress",
+                    "color": 8603131,
+                    "author": {
+                        "name": client.user.username,
+                        "icon_url": client.user.avatarURL
                     },
-                ],
-                "footer": {
-                    "icon_url": msg.author.avatarURL,
-                    "text": "'"+msg.content.split(" ")[0].substring(prefs.prefix.length)+"' issued by "+msg.author.tag
-                }
+                    "description": description,
+                    "footer": {
+                        "icon_url": msg.author.avatarURL,
+                        "text": "'"+msg.content.split(" ")[0].substring(prefs.prefix.length)+"' issued by "+msg.author.tag
+                    }
                 }
             });
+        }
+        else {
+            sendEmbeddedMessage(msg, ":x: This command does not exist. Type "+prefs.prefix+"help for a list of available commands.");
         }
         return;
     }
     // If malformed or invalid command
-    else if(commands[command] == null) {
-        sendEmbeddedMessage(msg, ":no_entry: Invalid command. Type `"+prefs.prefix+"help` for a list of available commands")
+    else if(commands[command] === undefined) {
+        sendEmbeddedMessage(msg, ":x: Invalid command. Type `"+prefs.prefix+"help` for a list of available commands")
         return;
     }
 
@@ -372,9 +441,9 @@ function processCommand(msg) {
 }
 
 client.on('ready', () => {
-    var id = crypto.randomBytes(10).toString('hex');
+    var id = crypto.randomBytes(5).toString('hex');
     console.log(`Logged in as ${client.user.tag}, build id: #`+id);
-    client.user.setPresence({game: {name: prefs.prefix+"help | Build #"+id}, status: 'online'});
+    client.user.setPresence({game: {name: prefs.prefix+"help | v"+version+" #"+id}, status: 'online'});
 });
 
 client.on('message', msg => {
