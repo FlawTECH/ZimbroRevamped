@@ -2,9 +2,19 @@ const Discord = require('discord.js');
 const prefs = require('./settings.json');
 const crypto = require('crypto');
 const jimp = require('jimp');
+const ytdl = require('ytdl-core');
 
 const version = "1.2";
 const client = new Discord.Client();
+const songQueues = {};
+
+function lengthFromSeconds(seconds) {
+    var hours = Math.floor(seconds / 3600);
+    var minutes = Math.floor(seconds / 60) - hours * 60;
+    var seconds = seconds - hours * 3600 - minutes * 60;
+
+    return (hours>0?hours.toString().padStart(2, '0')+":":'')+minutes.toString().padStart(2, '0')+":"+seconds.toString().padStart(2, '0');
+}
 
 function sendEmbeddedMessage(msg, text, image) {
 
@@ -51,6 +61,56 @@ function sendEmbeddedMessage(msg, text, image) {
     }
 
     
+}
+
+function embedYoutube(msg, video) {
+    msg.channel.send({
+        embed: {
+            title: video.player_response.videoDetails.title,
+            url: "https://www.youtube.com/watch?v="+video.player_response.videoDetails.videoId,
+            color: 14496300,
+            author: {
+                name: "Added to queue",
+                icon_url: video.author.avatar
+            },
+            thumbnail: {
+                url: video.thumbnail_url.replace("default.jpg", "hqdefault.jpg")
+            },
+            fields: [
+                {
+                    name: "Duration",
+                    value: lengthFromSeconds(video.player_response.videoDetails.lengthSeconds),
+                    inline: true
+                },
+                {
+                    name: "Queue position",
+                    value: 1,
+                    inline: true
+                },
+                {
+                    name: "Playing in",
+                    value: lengthFromSeconds(0),
+                    inline: true
+                },
+                {
+                    name: "Uploaded by",
+                    value: video.author.name,
+                    inline: true
+                }
+            ],
+            footer: {
+                icon_url: msg.author.avatarURL,
+                text: "'"+msg.content.split(" ")[0].substring(prefs.prefix.length)+"' issued by "+msg.author.tag
+            }
+        }
+    });
+}
+
+function getSongQueue(guild) {
+    if(!guild) return;
+    if(typeof guild == 'object') guild = guild.id;
+    if(!songQueues[guild]) songQueues[guild] = [];
+    return songQueues[guild];
 }
 
 function enoughArgs(min, args, msg) {
@@ -101,7 +161,6 @@ commands = {
             });
         }
     },
-
     "imgedit": {
         description: "Image manipulation toolbox",
         subcommands: {
@@ -331,7 +390,58 @@ commands = {
                 sendEmbeddedMessage(msg, ":x: An error has occured.\n\r`"+err+"`");
             });
         }
-    }
+    },
+    "play": {
+        description: "Plays a youtube video",
+        summon: function(msg, args) {
+            if(enoughArgs(0, args, msg)) {
+                // Check if link or not
+                const ytregex = new RegExp(/^http(s)?:\/\/(www\.)?((youtube\.com\/watch\?v=[a-z0-9-]*)|(youtu\.be\/[a-z0-9-]*))/);
+                if(ytregex.test(args[0].toLowerCase())) {
+
+                    const { voiceChannel } = msg.member;
+    
+                    if(!voiceChannel) {
+                        sendEmbeddedMessage(msg, ":x: Please join a voice channel first.\n\r`"+err+"`");
+                    }
+                    //Check if playlist or not
+                    const playlistregex = new RegExp(/^http(s)?:\/\/(www\.)?youtube\.com\/watch\?v=[a-z0-9-]*&list=[a-z0-9-]*$/);
+                    if(playlistregex.test(args[0].toLowerCase())) {
+                        //TODO
+                    }
+                    else {
+                        voiceChannel.join().then(connection => {
+                            const streamOptions = { seek: 0, volume: 0.2 };
+                            const stream = ytdl(args[0], { filter: 'audioonly' });
+                            stream.on('info', (info) => {
+                                embedYoutube(msg, info);
+                            });
+        
+                            const dispatcher = connection.playStream(stream, streamOptions);
+                            dispatcher.on('end', () => {
+                                voiceChannel.leave()
+                            });
+                            dispatcher.on('error', (e) => {
+                                console.log("Error: " + e);
+                            });
+                        });
+                    }
+                }
+
+            }
+        }
+    },
+    "stop": {
+        description: "Skips the current song and clears the entire queue",
+        summon: function(msg, args) {
+            let queue = getSongQueue(msg.guild);
+            if(queue) {
+                queue[0].stream.end('stopcmd');
+                queue = [];
+            }
+            sendEmbeddedMessage(msg, ":stop_button: Stopped");
+        }
+    },
 }
 
 function isCleanMessage(msg) {
@@ -431,6 +541,11 @@ function processCommand(msg) {
         }
         return;
     }
+    // YouTube links are case sensitive
+    else if(command === "play") {
+        args = msg.content.split(" ");
+        args.splice(0,1);
+    }
     // If malformed or invalid command
     else if(commands[command] === undefined) {
         sendEmbeddedMessage(msg, ":x: Invalid command. Type `"+prefs.prefix+"help` for a list of available commands")
@@ -444,6 +559,8 @@ client.on('ready', () => {
     var id = crypto.randomBytes(5).toString('hex');
     console.log(`Logged in as ${client.user.tag}, build id: #`+id);
     client.user.setPresence({game: {name: prefs.prefix+"help | v"+version+" #"+id}, status: 'online'});
+    // const { voiceChannel } = client.user;
+
 });
 
 client.on('message', msg => {
