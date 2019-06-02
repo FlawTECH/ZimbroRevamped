@@ -20,5 +20,13 @@
   "bugs": {
     "url": "https://gitlab.com/FlawTECH/ZimBroRevamped/issues"
   },
-  "homepage": "https://gitlab.com/FlawTECH/ZimBroRevamped#README"
+  "homepage": "https://gitlab.com/FlawTECH/ZimBroRevamped#README",
+  "dependencies": {
+    "crypto": "^1.0.1",
+    "discord.js": "^11.5.0",
+    "ffmpeg-binaries": "^4.0.0",
+    "jimp": "^0.6.4",
+    "node-opus": "^0.3.1",
+    "ytdl-core": "^0.29.2"
+  }
 }
