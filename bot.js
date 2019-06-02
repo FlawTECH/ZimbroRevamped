@@ -411,6 +411,12 @@ commands = {
                     }
                     else {
                         voiceChannel.join().then(connection => {
+                            let queue = getSongQueue(msg.guild);
+                            if(queue) {
+                                addToQueue() //TODO
+                            }
+
+                            //TO MOVE
                             const streamOptions = { seek: 0, volume: 0.2 };
                             const stream = ytdl(args[0], { filter: 'audioonly' });
                             stream.on('info', (info) => {
