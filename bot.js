@@ -16,7 +16,7 @@ function lengthFromSeconds(seconds) {
     return (hours>0?hours.toString().padStart(2, '0')+":":'')+minutes.toString().padStart(2, '0')+":"+seconds.toString().padStart(2, '0');
 }
 
-function sendEmbeddedMessage(msg, text, image) {
+function sendEmbeddedMessage(msg, title, text, image) {
 
     if(image !== undefined) {
         msg.channel.send({
@@ -30,7 +30,7 @@ function sendEmbeddedMessage(msg, text, image) {
                     url: image
                 },
                 fields: [{
-                    name: "Message",
+                    name: title,
                     value: text
                 }],
                 footer: {
@@ -49,7 +49,7 @@ function sendEmbeddedMessage(msg, text, image) {
                     icon_url: client.user.avatarURL
                 },
                 fields: [{
-                    name: "Error",
+                    name: title,
                     value: text
                 }],
                 footer: {
@@ -70,11 +70,11 @@ function embedYoutube(msg, video) {
             url: "https://www.youtube.com/watch?v="+video.player_response.videoDetails.videoId,
             color: 14496300,
             author: {
-                name: "Added to queue",
+                name: "Now playing",
                 icon_url: video.author.avatar
             },
             thumbnail: {
-                url: video.thumbnail_url.replace("default.jpg", "hqdefault.jpg")
+                url: video.player_response.videoDetails.thumbnail.thumbnails[video.player_response.videoDetails.thumbnail.thumbnails.length-1].url
             },
             fields: [
                 {
@@ -113,10 +113,50 @@ function getSongQueue(guild) {
     return songQueues[guild];
 }
 
+function addToQueue(guild, url) {
+    let queue = getSongQueue(guild);
+    if(queue) {
+        let len = queue.push({
+            'title': 'wip',
+            'link': 'https://www.google.com',
+            'url': url
+        });
+
+        return len;
+    }
+    return 0;
+}
+
+function playQueue(msg, queue, voiceChannel) {
+    if(!queue[0]) {
+        voiceChannel.leave()
+        return;
+    }
+
+    voiceChannel.join().then(connection => {
+        const streamOptions = { seek: 0, volume: 0.2 };
+        const stream = ytdl(queue[0].url, { filter: 'audioonly' });
+
+        stream.on('info', (info) => {
+            embedYoutube(msg, info);
+        });
+
+        const dispatcher = connection.playStream(stream, streamOptions);
+        dispatcher.on('end', () => {
+            queue.shift();
+            playQueue(msg, queue, voiceChannel);
+        });
+        dispatcher.on('error', (e) => {
+            queue.shift();
+            console.log("Error: " + e);
+        });
+    });
+}
+
 function enoughArgs(min, args, msg) {
     if(args.length < min+1) {
         cmd = getCurrentCommand(msg);
-        sendEmbeddedMessage(msg, ':x: Too few arguments. Please type `'+prefs.prefix+"help "+cmd+" "+args[0]+"` for more info");
+        sendEmbeddedMessage(msg, "Error", ':x: Too few arguments. Please type `'+prefs.prefix+"help "+cmd+" "+args[0]+"` for more info");
         return false;
     }
     return true;
@@ -208,17 +248,17 @@ commands = {
 
             // No args
             if(args.length == 0) {
-                sendEmbeddedMessage(msg, ":x: Too few arguments. Type `"+prefs.prefix+"help "+Object.keys(commands)[Object.keys(commands).indexOf(command)]+"` for more info");
+                sendEmbeddedMessage(msg, "Error", ":x: Too few arguments. Type `"+prefs.prefix+"help "+Object.keys(commands)[Object.keys(commands).indexOf(command)]+"` for more info");
                 return;
             }
             else if(!Object.keys(this.subcommands).includes(args[0])) {
-                sendEmbeddedMessage(msg, ":x: Unknown argument(s). Type `"+prefs.prefix+"help "+Object.keys(commands)[Object.keys(commands).indexOf(command)]+"` for more info");
+                sendEmbeddedMessage(msg, "Error", ":x: Unknown argument(s). Type `"+prefs.prefix+"help "+Object.keys(commands)[Object.keys(commands).indexOf(command)]+"` for more info");
                 return;
             }
 
             // No embeds
             if(msg.attachments.size == 0) {
-                sendEmbeddedMessage(msg, ":x: You need to embed and comment an image to perform this command as shown on the image below", "https://pli.io/FGBbm.png")
+                sendEmbeddedMessage(msg, "Error", ":x: You need to embed and comment an image to perform this command as shown on the image below", "https://pli.io/FGBbm.png")
                 return;
             }
 
@@ -276,7 +316,7 @@ commands = {
                         }
                         else {
                             if(availableSizes.indexOf(fontSize) === 0) {
-                                sendEmbeddedMessage(msg, ":x: Text won't fit. Please consider using a bigger image or smaller words");
+                                sendEmbeddedMessage(msg, "Error", ":x: Text won't fit. Please consider using a bigger image or smaller words");
                                 return;
                             }
                             else {
@@ -317,7 +357,7 @@ commands = {
                         height = parseInt(args[2]);
 
                         if(width>5000 || height>5000) {
-                            sendEmbeddedMessage(msg, ":x: Width and height are limited to 5000 pixels to spare some bandwidth");
+                            sendEmbeddedMessage(msg, "Error", ":x: Width and height are limited to 5000 pixels to spare some bandwidth");
                             return;
                         }
 
@@ -387,7 +427,7 @@ commands = {
                 }
 
             }).catch(function (err) {
-                sendEmbeddedMessage(msg, ":x: An error has occured.\n\r`"+err+"`");
+                sendEmbeddedMessage(msg, "Error", ":x: An error has occured.\n\r`"+err+"`");
             });
         }
     },
@@ -402,7 +442,7 @@ commands = {
                     const { voiceChannel } = msg.member;
     
                     if(!voiceChannel) {
-                        sendEmbeddedMessage(msg, ":x: Please join a voice channel first.\n\r`"+err+"`");
+                        sendEmbeddedMessage(msg, "Error", ":x: Please join a voice channel first.\n\r`"+err+"`");
                     }
                     //Check if playlist or not
                     const playlistregex = new RegExp(/^http(s)?:\/\/(www\.)?youtube\.com\/watch\?v=[a-z0-9-]*&list=[a-z0-9-]*$/);
@@ -410,27 +450,24 @@ commands = {
                         //TODO
                     }
                     else {
-                        voiceChannel.join().then(connection => {
-                            let queue = getSongQueue(msg.guild);
-                            if(queue) {
-                                addToQueue() //TODO
-                            }
+                        let queueLen = addToQueue(msg.guild, args[0]);
+                        /**
+                         * TODO
+                         * --------
+                         * > Fix embeds
+                         * > Add skip */ 
+                        if(queueLen > 0) {
+                            sendEmbeddedMessage(msg, "Success", ":white_check_mark: Added to queue.");
 
-                            //TO MOVE
-                            const streamOptions = { seek: 0, volume: 0.2 };
-                            const stream = ytdl(args[0], { filter: 'audioonly' });
-                            stream.on('info', (info) => {
-                                embedYoutube(msg, info);
-                            });
-        
-                            const dispatcher = connection.playStream(stream, streamOptions);
-                            dispatcher.on('end', () => {
-                                voiceChannel.leave()
-                            });
-                            dispatcher.on('error', (e) => {
-                                console.log("Error: " + e);
-                            });
-                        });
+                            if(queueLen == 1) { // First song in queue, init play
+                                let queue = getSongQueue(msg.guild);
+                                playQueue(msg, queue, voiceChannel);
+                            }
+                        }
+                        else {
+                            sendEmbeddedMessage(msg, "Error", ":x: Unable to add song to queue.");
+                        }
+
                     }
                 }
 
@@ -445,7 +482,7 @@ commands = {
                 queue[0].stream.end('stopcmd');
                 queue = [];
             }
-            sendEmbeddedMessage(msg, ":stop_button: Stopped");
+            sendEmbeddedMessage(msg, "Success", ":stop_button: Stopped");
         }
     },
 }
@@ -543,7 +580,7 @@ function processCommand(msg) {
             });
         }
         else {
-            sendEmbeddedMessage(msg, ":x: This command does not exist. Type "+prefs.prefix+"help for a list of available commands.");
+            sendEmbeddedMessage(msg, "Error", ":x: This command does not exist. Type "+prefs.prefix+"help for a list of available commands.");
         }
         return;
     }
@@ -554,7 +591,7 @@ function processCommand(msg) {
     }
     // If malformed or invalid command
     else if(commands[command] === undefined) {
-        sendEmbeddedMessage(msg, ":x: Invalid command. Type `"+prefs.prefix+"help` for a list of available commands")
+        sendEmbeddedMessage(msg, "Error", ":x: Invalid command. Type `"+prefs.prefix+"help` for a list of available commands")
         return;
     }
 
