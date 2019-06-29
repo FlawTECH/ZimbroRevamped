@@ -63,63 +63,100 @@ function sendEmbeddedMessage(msg, title, text, image) {
     
 }
 
-function embedYoutube(msg, video) {
-    msg.channel.send({
-        embed: {
-            title: video.player_response.videoDetails.title,
-            url: "https://www.youtube.com/watch?v="+video.player_response.videoDetails.videoId,
-            color: 14496300,
-            author: {
-                name: "Now playing",
-                icon_url: video.author.avatar
-            },
-            thumbnail: {
-                url: video.player_response.videoDetails.thumbnail.thumbnails[video.player_response.videoDetails.thumbnail.thumbnails.length-1].url
-            },
-            fields: [
-                {
-                    name: "Duration",
-                    value: lengthFromSeconds(video.player_response.videoDetails.lengthSeconds),
-                    inline: true
+function embedYoutube(msg, video, isAddQueue, queuePos = 1, queueTime = 0) {
+
+    if(isAddQueue) {
+        msg.channel.send({
+            embed: {
+                title: video.player_response.videoDetails.title,
+                url: "https://www.youtube.com/watch?v="+video.player_response.videoDetails.videoId,
+                color: 14496300,
+                author: {
+                    name: isAddQueue?"Added to queue":"Now playing",
+                    icon_url: video.author.avatar
                 },
-                {
-                    name: "Queue position",
-                    value: 1,
-                    inline: true
+                thumbnail: {
+                    url: video.player_response.videoDetails.thumbnail.thumbnails[video.player_response.videoDetails.thumbnail.thumbnails.length-1].url
                 },
-                {
-                    name: "Playing in",
-                    value: lengthFromSeconds(0),
-                    inline: true
-                },
-                {
-                    name: "Uploaded by",
-                    value: video.author.name,
-                    inline: true
+                fields: [
+                    {
+                        name: "Duration",
+                        value: lengthFromSeconds(video.player_response.videoDetails.lengthSeconds),
+                        inline: true
+                    },
+                    {
+                        name: "Queue position",
+                        value: queuePos,
+                        inline: true
+                    },
+                    {
+                        name: "Playing in",
+                        value: lengthFromSeconds(queueTime),
+                        inline: true
+                    },
+                    {
+                        name: "Uploaded by",
+                        value: video.author.name,
+                        inline: true
+                    }
+                ],
+                footer: {
+                    icon_url: msg.author.avatarURL,
+                    text: "'"+msg.content.split(" ")[0].substring(prefs.prefix.length)+"' issued by "+msg.author.tag
                 }
-            ],
-            footer: {
-                icon_url: msg.author.avatarURL,
-                text: "'"+msg.content.split(" ")[0].substring(prefs.prefix.length)+"' issued by "+msg.author.tag
             }
-        }
-    });
+        });
+    }
+    else {
+        msg.channel.send({
+            embed: {
+                title: video.player_response.videoDetails.title,
+                url: "https://www.youtube.com/watch?v="+video.player_response.videoDetails.videoId,
+                color: 14496300,
+                author: {
+                    name: isAddQueue?":white_check_mark: Added to queue":"Now playing",
+                    icon_url: video.author.avatar
+                },
+                thumbnail: {
+                    url: video.player_response.videoDetails.thumbnail.thumbnails[video.player_response.videoDetails.thumbnail.thumbnails.length-1].url
+                },
+                fields: [
+                    {
+                        name: "Duration",
+                        value: lengthFromSeconds(video.player_response.videoDetails.lengthSeconds),
+                        inline: true
+                    },
+                    {
+                        name: "Uploaded by",
+                        value: video.author.name,
+                        inline: true
+                    }
+                ],
+                footer: {
+                    icon_url: msg.author.avatarURL,
+                    text: "'"+msg.content.split(" ")[0].substring(prefs.prefix.length)+"' issued by "+msg.author.tag
+                }
+            }
+        });
+    }
 }
 
 function getSongQueue(guild) {
     if(!guild) return;
     if(typeof guild == 'object') guild = guild.id;
-    if(!songQueues[guild]) songQueues[guild] = [];
+    if(!songQueues[guild]) songQueues[guild] = {
+        'songs': [],
+        'dispatcher': undefined
+    };
     return songQueues[guild];
 }
 
-function addToQueue(guild, url) {
+function addToQueue(guild, url, length) {
     let queue = getSongQueue(guild);
     if(queue) {
-        let len = queue.push({
-            'title': 'wip',
-            'link': 'https://www.google.com',
-            'url': url
+        let len = queue.songs.push({
+            'url': url,
+            'lengthSeconds': parseInt(length)
         });
 
         return len;
@@ -127,30 +164,58 @@ function addToQueue(guild, url) {
     return 0;
 }
 
-function playQueue(msg, queue, voiceChannel) {
-    if(!queue[0]) {
+function playQueue(msg, queue, voiceChannel, firstSong = false) {
+    // Stopping if end of queue
+    if(!queue.songs[0]) {
         voiceChannel.leave()
         return;
     }
 
+    // Establishing voice connection
     voiceChannel.join().then(connection => {
+
+        // Setting stream options
         const streamOptions = { seek: 0, volume: 0.2 };
-        const stream = ytdl(queue[0].url, { filter: 'audioonly' });
-
-        stream.on('info', (info) => {
-            embedYoutube(msg, info);
-        });
-
+        const stream = ytdl(queue.songs[0].url, { filter: 'audioonly' });
+    
+        if(!firstSong) {
+            stream.on('info', (info) => {
+                embedYoutube(msg, info, false);
+            });
+        }
+    
+        // Playing the song
         const dispatcher = connection.playStream(stream, streamOptions);
+    
         dispatcher.on('end', () => {
-            queue.shift();
+            queue.songs.shift();
             playQueue(msg, queue, voiceChannel);
         });
         dispatcher.on('error', (e) => {
-            queue.shift();
+            queue.songs.shift();
             console.log("Error: " + e);
         });
+    
+        queue.dispatcher = dispatcher;
+    })
+    .catch(err => sendEmbeddedMessage(msg, "Error", ":x: "+err));
+
+}
+
+function getTimeBeforePlay(queue) {
+    let total = 0;
+    queue.songs.forEach((song, idx) => {
+        if(idx != queue.songs.length-1) {
+            total += song.lengthSeconds;
+        }
     });
+    
+    // Remove time of song currently playing
+    if(queue.dispatcher && total > 0) {
+        console.log("Elapsed: "+Math.floor(queue.dispatcher.time/1000)+" seconds");
+        total -= Math.floor(queue.dispatcher.time/1000);
+    }
+    return total;
 }
 
 function enoughArgs(min, args, msg) {
@@ -450,24 +515,33 @@ commands = {
                         //TODO
                     }
                     else {
-                        let queueLen = addToQueue(msg.guild, args[0]);
-                        /**
-                         * TODO
-                         * --------
-                         * > Fix embeds
-                         * > Add skip */ 
-                        if(queueLen > 0) {
-                            sendEmbeddedMessage(msg, "Success", ":white_check_mark: Added to queue.");
+                        let queueLen = 0;
+                        let queue = getSongQueue(msg.guild);
 
-                            if(queueLen == 1) { // First song in queue, init play
-                                let queue = getSongQueue(msg.guild);
-                                playQueue(msg, queue, voiceChannel);
+                        // Getting video info
+                        ytdl.getBasicInfo(args[0], (err, info) => {
+                            if(err) {
+                                // Not added to queue for ytdl related reason
+                                sendEmbeddedMessage(msg, "Error", ":x: "+err);
                             }
-                        }
-                        else {
-                            sendEmbeddedMessage(msg, "Error", ":x: Unable to add song to queue.");
-                        }
+                            else {
+                                queueLen = addToQueue(msg.guild, args[0], info.player_response.videoDetails.lengthSeconds);
 
+                                // Success adding to queue
+                                if(queueLen > 0) {
+                                    embedYoutube(msg, info, true, queueLen, getTimeBeforePlay(queue));
+        
+                                    if(queueLen == 1) { // First song in queue, init play
+                                        playQueue(msg, queue, voiceChannel, true);
+                                    }
+                                }
+
+                                // Not added to queue for some other reason
+                                else {
+                                    sendEmbeddedMessage(msg, "Error", ":x: Unable to add song to queue.");
+                                }
+                            }
+                        });
                     }
                 }
 
@@ -479,12 +553,23 @@ commands = {
         summon: function(msg, args) {
             let queue = getSongQueue(msg.guild);
             if(queue) {
-                queue[0].stream.end('stopcmd');
-                queue = [];
+                queue.songs = [];
+                queue.dispatcher.end('stopcmd');
             }
             sendEmbeddedMessage(msg, "Success", ":stop_button: Stopped");
         }
     },
+    "skip": {
+        description: "Skips the current song",
+        summon: function(msg, args) {
+            let queue = getSongQueue(msg.guild);
+            if(queue) {
+                queue.dispatcher.end('skipcmd');
+            }
+            sendEmbeddedMessage(msg, "Success", ":fast_forward: Song skipped");
+        }
+    }
+    // TODO: add "np" command
 }
 
 function isCleanMessage(msg) {
