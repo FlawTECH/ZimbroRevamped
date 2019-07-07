@@ -4,9 +4,10 @@ const crypto = require('crypto');
 const jimp = require('jimp');
 const ytdl = require('ytdl-core');
 
-const version = "1.2";
+const version = "19.07_07";
 const client = new Discord.Client();
 const songQueues = {};
+
 
 function lengthFromSeconds(seconds) {
     var hours = Math.floor(seconds / 3600);
@@ -141,6 +142,46 @@ function embedYoutube(msg, video, isAddQueue, queuePos = 1, queueTime = 0) {
     }
 }
 
+function embedNowPlaying(msg, song, playTime) {
+    msg.channel.send({
+        embed: {
+            title: song.title,
+            url: "https://www.youtube.com/watch?v="+song.videoID,
+            description: "`"+getProgressBar(playTime, song.lengthSeconds, 30)+"\n"+lengthFromSeconds(playTime)+" / "+lengthFromSeconds(song.lengthSeconds)+"`",
+            color: 14496300,
+            author: {
+                name: "Now playing",
+                icon_url: song.avatarURL
+            },
+            thumbnail: {
+                url: song.thumbnailURL
+            },
+            fields: [
+                {
+                    name: "Uploaded by",
+                    value: song.authorName,
+                    inline: true
+                },
+                {
+                    name: "Requested by",
+                    value: song.requestedBy,
+                    inline: true
+                }
+            ],
+            footer: {
+                icon_url: msg.author.avatarURL,
+                text: "'"+msg.content.split(" ")[0].substring(prefs.prefix.length)+"' issued by "+msg.author.tag
+            }
+        }
+    });
+}
+
+function getProgressBar(timeStart, timeEnd, length) {
+    let progress = Math.floor((timeStart/timeEnd)*length);
+    if(progress == 0) { progress = 1; }
+    return "▬".repeat(progress-1)+"🔘"+"▬".repeat(length-progress-1);
+}
+
 function getSongQueue(guild) {
     if(!guild) return;
     if(typeof guild == 'object') guild = guild.id;
@@ -151,12 +192,18 @@ function getSongQueue(guild) {
     return songQueues[guild];
 }
 
-function addToQueue(guild, url, length) {
+function addToQueue(guild, url, length, info, user) {
     let queue = getSongQueue(guild);
     if(queue) {
         let len = queue.songs.push({
             'url': url,
-            'lengthSeconds': parseInt(length)
+            'title': info.player_response.videoDetails.title,
+            'videoID': info.player_response.videoDetails.videoId,
+            'lengthSeconds': parseInt(length),
+            'avatarURL': info.author.avatar,
+            'thumbnailURL': info.player_response.videoDetails.thumbnail.thumbnails[info.player_response.videoDetails.thumbnail.thumbnails.length-1].url,
+            'authorName': info.author.name,
+            'requestedBy': user
         });
 
         return len;
@@ -512,7 +559,7 @@ commands = {
                     //Check if playlist or not
                     const playlistregex = new RegExp(/^http(s)?:\/\/(www\.)?youtube\.com\/watch\?v=[a-z0-9-]*&list=[a-z0-9-]*$/);
                     if(playlistregex.test(args[0].toLowerCase())) {
-                        //TODO
+                        sendEmbeddedMessage(msg, "Error", ":x: Playlists not yet implemented");
                     }
                     else {
                         let queueLen = 0;
@@ -525,7 +572,7 @@ commands = {
                                 sendEmbeddedMessage(msg, "Error", ":x: "+err);
                             }
                             else {
-                                queueLen = addToQueue(msg.guild, args[0], info.player_response.videoDetails.lengthSeconds);
+                                queueLen = addToQueue(msg.guild, args[0], info.player_response.videoDetails.lengthSeconds, info, msg.author.username);
 
                                 // Success adding to queue
                                 if(queueLen > 0) {
@@ -568,8 +615,19 @@ commands = {
             }
             sendEmbeddedMessage(msg, "Success", ":fast_forward: Song skipped");
         }
+    },
+    "np": {
+        description: "Shows current song info",
+        summon: function(msg, args) {
+            let queue = getSongQueue(msg.guild);
+            if(queue.songs.length>0) {
+                embedNowPlaying(msg, queue.songs[0], Math.floor(queue.dispatcher.time/1000));
+            }
+            else {
+                sendEmbeddedMessage(msg, "Error", ":x: No song playing on this server");
+            }
+        }
     }
-    // TODO: add "np" command
 }
 
 function isCleanMessage(msg) {
@@ -670,7 +728,7 @@ function processCommand(msg) {
         return;
     }
     // YouTube links are case sensitive
-    else if(command === "play") {
+    else if(command === "play" || commands === "p") {
         args = msg.content.split(" ");
         args.splice(0,1);
     }
