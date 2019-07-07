@@ -24,7 +24,7 @@
   "dependencies": {
     "crypto": "^1.0.1",
     "discord.js": "^11.5.1",
-    "ffmpeg-binaries": "^4.0.0",
+    "ffmpeg-static": "^2.4.0",
     "google-auth-library": "^4.2.5",
     "googleapis": "^40.0.1",
     "jimp": "^0.6.4",
