@@ -3,10 +3,15 @@ const prefs = require('./settings.json');
 const crypto = require('crypto');
 const jimp = require('jimp');
 const ytdl = require('ytdl-core');
+const fs = require('fs');
+const {google} = require('googleapis');
+const OAuth2 = google.auth.OAuth2;
+const readline = require('readline');
 
 const version = "19.07_07";
 const client = new Discord.Client();
 const songQueues = {};
+var SCOPES = ['https://www.googleapis.com/auth/youtube.readonly'];
 
 
 function lengthFromSeconds(seconds) {
@@ -224,12 +229,13 @@ function playQueue(msg, queue, voiceChannel, firstSong = false) {
         // Setting stream options
         const streamOptions = { seek: 0, volume: 0.2 };
         const stream = ytdl(queue.songs[0].url, { filter: 'audioonly' });
-    
+
         if(!firstSong) {
             stream.on('info', (info) => {
                 embedYoutube(msg, info, false);
             });
         }
+
     
         // Playing the song
         const dispatcher = connection.playStream(stream, streamOptions);
@@ -249,6 +255,36 @@ function playQueue(msg, queue, voiceChannel, firstSong = false) {
 
 }
 
+function initYoutubePlay(videoUrl, voiceChannel, msg) {
+    let queueLen = 0;
+    let queue = getSongQueue(msg.guild);
+
+    // Getting video info
+    ytdl.getBasicInfo(videoUrl, (err, info) => {
+        if(err) {
+            // Not added to queue for ytdl related reason
+            sendEmbeddedMessage(msg, "Error", ":x: "+err);
+        }
+        else {
+            queueLen = addToQueue(msg.guild, videoUrl, info.player_response.videoDetails.lengthSeconds, info, msg.author.username);
+
+            // Success adding to queue
+            if(queueLen > 0) {
+                embedYoutube(msg, info, true, queueLen, getTimeBeforePlay(queue));
+
+                if(queueLen == 1) { // First song in queue, init play
+                    playQueue(msg, queue, voiceChannel, true);
+                }
+            }
+
+            // Not added to queue for some other reason
+            else {
+                sendEmbeddedMessage(msg, "Error", ":x: Unable to add song to queue.");
+            }
+        }
+    });
+}
+
 function getTimeBeforePlay(queue) {
     let total = 0;
     queue.songs.forEach((song, idx) => {
@@ -259,10 +295,30 @@ function getTimeBeforePlay(queue) {
     
     // Remove time of song currently playing
     if(queue.dispatcher && total > 0) {
-        console.log("Elapsed: "+Math.floor(queue.dispatcher.time/1000)+" seconds");
         total -= Math.floor(queue.dispatcher.time/1000);
     }
     return total;
+}
+
+function searchVideos(searchTerms, callback) {
+    var service = google.youtube({
+        version: 'v3',
+        auth: prefs.youtube_api_key
+    });
+
+    service.search.list({
+        part: 'snippet',
+        q: searchTerms,
+        maxResults: 1,
+        type: "video",
+        relevanceLanguage: "en"
+    }, function(err, res) {
+        if(err) {
+            callback(err);
+            return;
+        }
+        callback(undefined, res);
+    });
 }
 
 function enoughArgs(min, args, msg) {
@@ -547,49 +603,45 @@ commands = {
         description: "Plays a youtube video",
         summon: function(msg, args) {
             if(enoughArgs(0, args, msg)) {
+
+                // Check if user is in voice channel
+                const { voiceChannel } = msg.member;
+    
+                if(!voiceChannel) {
+                    sendEmbeddedMessage(msg, "Error", ":x: Please join a voice channel first.\n\r`"+err+"`");
+                }
+
                 // Check if link or not
                 const ytregex = new RegExp(/^http(s)?:\/\/(www\.)?((youtube\.com\/watch\?v=[a-z0-9-]*)|(youtu\.be\/[a-z0-9-]*))/);
                 if(ytregex.test(args[0].toLowerCase())) {
 
-                    const { voiceChannel } = msg.member;
-    
-                    if(!voiceChannel) {
-                        sendEmbeddedMessage(msg, "Error", ":x: Please join a voice channel first.\n\r`"+err+"`");
-                    }
                     //Check if playlist or not
                     const playlistregex = new RegExp(/^http(s)?:\/\/(www\.)?youtube\.com\/watch\?v=[a-z0-9-]*&list=[a-z0-9-]*$/);
                     if(playlistregex.test(args[0].toLowerCase())) {
                         sendEmbeddedMessage(msg, "Error", ":x: Playlists not yet implemented");
                     }
                     else {
-                        let queueLen = 0;
-                        let queue = getSongQueue(msg.guild);
+                        // Play song
+                        initYoutubePlay(args[0], voiceChannel, msg);
+                    }
+                }
+                else { //Search for song then play it
+                    let searchTerms = args.join(' ');
 
-                        // Getting video info
-                        ytdl.getBasicInfo(args[0], (err, info) => {
-                            if(err) {
-                                // Not added to queue for ytdl related reason
-                                sendEmbeddedMessage(msg, "Error", ":x: "+err);
+                    searchVideos(searchTerms, function(err, res) {
+                        if(err) {
+                            sendEmbeddedMessage(msg, "Error", ":x: "+err);
+                        }
+                        else {
+                            if(res.data.items.length<1) {
+                                sendEmbeddedMessage(msg, "Error", ":x: No results found for these search terms.");
                             }
                             else {
-                                queueLen = addToQueue(msg.guild, args[0], info.player_response.videoDetails.lengthSeconds, info, msg.author.username);
-
-                                // Success adding to queue
-                                if(queueLen > 0) {
-                                    embedYoutube(msg, info, true, queueLen, getTimeBeforePlay(queue));
-        
-                                    if(queueLen == 1) { // First song in queue, init play
-                                        playQueue(msg, queue, voiceChannel, true);
-                                    }
-                                }
-
-                                // Not added to queue for some other reason
-                                else {
-                                    sendEmbeddedMessage(msg, "Error", ":x: Unable to add song to queue.");
-                                }
+                                // Play song
+                                initYoutubePlay("https://youtube.com/watch?v="+res.data.items[0].id.videoId, voiceChannel, msg);
                             }
-                        });
-                    }
+                        }
+                    });
                 }
 
             }
@@ -741,12 +793,12 @@ function processCommand(msg) {
     commands[command].summon(msg, args);
 }
 
+
+
 client.on('ready', () => {
     var id = crypto.randomBytes(5).toString('hex');
     console.log(`Logged in as ${client.user.tag}, build id: #`+id);
     client.user.setPresence({game: {name: prefs.prefix+"help | v"+version+" #"+id}, status: 'online'});
-    // const { voiceChannel } = client.user;
-
 });
 
 client.on('message', msg => {
