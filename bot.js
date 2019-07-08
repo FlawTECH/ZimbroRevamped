@@ -8,7 +8,7 @@ const {google} = require('googleapis');
 const OAuth2 = google.auth.OAuth2;
 const readline = require('readline');
 
-const version = "19.07_07";
+const version = "19.08_07";
 const client = new Discord.Client();
 const songQueues = {};
 var SCOPES = ['https://www.googleapis.com/auth/youtube.readonly'];
@@ -300,6 +300,19 @@ function getTimeBeforePlay(queue) {
     return total;
 }
 
+function getQueueTime(queue) {
+    let total = 0;
+    queue.songs.forEach((song, idx) => {
+        total += song.lengthSeconds;
+    });
+    
+    // Remove time of song currently playing
+    if(queue.dispatcher && total > 0) {
+        total -= Math.floor(queue.dispatcher.time/1000);
+    }
+    return total; 
+}
+
 function searchVideos(searchTerms, callback) {
     var service = google.youtube({
         version: 'v3',
@@ -318,6 +331,38 @@ function searchVideos(searchTerms, callback) {
             return;
         }
         callback(undefined, res);
+    });
+}
+
+function embedQueue(msg, queue, page) {
+
+    let totalPages = Math.ceil((queue.songs.length-1)/10);
+    if(totalPages === 0) { totalPages = 1; }
+
+    let prettyQueue = page===1?':arrow_forward: **Now playing**':':arrow_heading_down: **Upcoming**';
+    if(page === 1) { // Printing now playing
+        prettyQueue+='\n['+queue.songs[0].title+']('+queue.songs[0].url+') `('+lengthFromSeconds(queue.songs[0].lengthSeconds)+') ౼ Requested by '+queue.songs[0].requestedBy+'`\n\n:arrow_heading_down: **Upcoming**';
+    }
+
+    // Pretty printing page
+    for(var i = ((page-1)*10)+1; i <= page*10; i++) {
+        if(!queue.songs[i]) { break; }
+        prettyQueue+='\n`'+i+'.` ['+queue.songs[i].title+']('+queue.songs[i].url+') `('+lengthFromSeconds(queue.songs[i].lengthSeconds)+') ౼ Requested by '+queue.songs[i].requestedBy+'`\n';
+    };
+
+    msg.channel.send({
+        embed: {
+            description: prettyQueue,
+            color: 8603131,
+            author: {
+                name: client.user.username + " | Queue length: "+lengthFromSeconds(getQueueTime(queue)),
+                icon_url: client.user.avatarURL
+            },
+            footer: {
+                icon_url: msg.author.avatarURL,
+                text: "'"+msg.content.split(" ")[0].substring(prefs.prefix.length)+"' issued by "+msg.author.tag + ' | Page '+page+'/'+totalPages)
+            }
+        }
     });
 }
 
@@ -678,6 +723,20 @@ commands = {
             }
             else {
                 sendEmbeddedMessage(msg, "Error", ":x: No song playing on this server");
+            }
+        }
+    },
+    "queue": {
+        description: "Shows the queue for this server",
+        summon: function(msg, args) {
+            let queue = getSongQueue(msg.guild);
+            let page = 1;
+            if(args[0]) { page = parseInt(args[0]) }
+            if(queue.songs.length>0) {
+                embedQueue(msg, queue, page);
+            }
+            else {
+                sendEmbeddedMessage(msg, "Info", ":information_source: The queue is empty");
             }
         }
     }
