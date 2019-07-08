@@ -360,7 +360,7 @@ function embedQueue(msg, queue, page) {
             },
             footer: {
                 icon_url: msg.author.avatarURL,
-                text: "'"+msg.content.split(" ")[0].substring(prefs.prefix.length)+"' issued by "+msg.author.tag + ' | Page '+page+'/'+totalPages)
+                text: "'"+msg.content.split(" ")[0].substring(prefs.prefix.length)+"' issued by "+msg.author.tag + ' | Page '+page+'/'+totalPages
             }
         }
     });
