@@ -760,6 +760,9 @@ commands = {
             if(enoughArgs(0, args, msg)) {
                 let queue = getSongQueue(msg.guild);
                 let index = parseInt(args[0]);
+                if(index === 0) {
+                    sendEmbeddedMessage(msg, "Error", ":x: Type "+prefs.preix+"skip if you want to skip the current song.");
+                }
                 if(index > 0 && index < queue.songs.length) {
                     queue.songs.splice(index, 1);
                     sendEmbeddedMessage(msg, "Success", ":white_check_mark: Song removed from queue")
@@ -768,6 +771,14 @@ commands = {
                     sendEmbeddedMessage(msg, "Error", ":x: Invalid song index")
                 }
             }
+        }
+    },
+    "clear": {
+        description: "Clears the entire queue",
+        summon: function(msg, args) {
+            let queue = getSongQueue(msg.guild);
+            queue.songs.splice(1, queue.songs.length-1);
+            sendEmbeddedMessage(msg, "Success", ":bomb: Queue cleared")
         }
     }
 }
