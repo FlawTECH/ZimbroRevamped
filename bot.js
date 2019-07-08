@@ -366,6 +366,10 @@ function embedQueue(msg, queue, page) {
     });
 }
 
+function removeFromQueue(songs, index) {
+    
+}
+
 function enoughArgs(min, args, msg) {
     if(args.length < min+1) {
         cmd = getCurrentCommand(msg);
@@ -730,13 +734,39 @@ commands = {
         description: "Shows the queue for this server",
         summon: function(msg, args) {
             let queue = getSongQueue(msg.guild);
+
+            // Checking page requested
             let page = 1;
-            if(args[0]) { page = parseInt(args[0]) }
+            if(args[0] && args[0] > 0) { page = parseInt(args[0]) }
+            let totalPages = Math.ceil((queue.songs.length-1)/10);
+            if(totalPages === 0) { totalPages = 1; }
+            if(page > totalPages) {
+                sendEmbeddedMessage(msg, "Error", ":x: There aren't that many songs !")
+                return;
+            }
+
+            // Checking queue
             if(queue.songs.length>0) {
                 embedQueue(msg, queue, page);
             }
             else {
-                sendEmbeddedMessage(msg, "Info", ":information_source: The queue is empty");
+                sendEmbeddedMessage(msg, "Error", ":x: The queue is empty");
+            }
+        }
+    },
+    "remove": {
+        description: "Remove a song from the queue",
+        summon: function(msg, args) {
+            if(enoughArgs(0, args, msg)) {
+                let queue = getSongQueue(msg.guild);
+                let index = parseInt(args[0]);
+                if(index > 0 && index < queue.songs.length) {
+                    queue.songs.splice(index, 1);
+                    sendEmbeddedMessage(msg, "Success", ":white_check_mark: Song removed from queue")
+                }
+                else {
+                    sendEmbeddedMessage(msg, "Error", ":x: Invalid song index")
+                }
             }
         }
     }
