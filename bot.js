@@ -609,6 +609,7 @@ commands = {
     
                 if(!voiceChannel) {
                     sendEmbeddedMessage(msg, "Error", ":x: Please join a voice channel first.");
+                    return;
                 }
 
                 // Check if link or not
