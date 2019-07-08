@@ -608,7 +608,7 @@ commands = {
                 const { voiceChannel } = msg.member;
     
                 if(!voiceChannel) {
-                    sendEmbeddedMessage(msg, "Error", ":x: Please join a voice channel first.\n\r`"+err+"`");
+                    sendEmbeddedMessage(msg, "Error", ":x: Please join a voice channel first.");
                 }
 
                 // Check if link or not
