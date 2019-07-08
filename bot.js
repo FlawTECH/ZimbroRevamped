@@ -708,6 +708,32 @@ commands = {
             sendEmbeddedMessage(msg, "Success", ":stop_button: Stopped");
         }
     },
+    "pause": {
+        description: "Pauses the current song",
+        summon: function(msg, args) {
+            let queue = getSongQueue(msg.guild);
+            if(queue.dispatcher.paused) {
+                sendEmbeddedMessage(msg, "Error", ":x: Song is already paused");
+            }
+            else {
+                queue.dispatcher.pause();
+                sendEmbeddedMessage(msg, "Success", ":pause_button: Song paused");
+            }
+        }
+    },
+    "resume": {
+        description: "Resumes the current song",
+        summon: function(msg, args) {
+            let queue = getSongQueue(msg.guild);
+            if(queue.dispatcher.paused) {
+                queue.dispatcher.resume()
+                sendEmbeddedMessage(msg, "Success", ":arrow_forward: Song resumed");
+            }
+            else {
+                sendEmbeddedMessage(msg, "Error", ":x: Song not paused");
+            }
+        }
+    },
     "skip": {
         description: "Skips the current song",
         summon: function(msg, args) {
@@ -715,7 +741,7 @@ commands = {
             if(queue) {
                 queue.dispatcher.end('skipcmd');
             }
-            sendEmbeddedMessage(msg, "Success", ":fast_forward: Song skipped");
+            sendEmbeddedMessage(msg, "Success", ":track_next: Song skipped");
         }
     },
     "np": {
