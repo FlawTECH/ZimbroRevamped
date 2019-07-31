@@ -743,7 +743,7 @@ commands = {
             let queue = getSongQueue(msg.guild);
             if(queue) {
                 queue.songs = [];
-                queue.dispatcher.end('stopcmd');
+                queue.dispatcher && queue.dispatcher.end('stopcmd');
             }
             sendEmbeddedMessage(msg, "Success", ":stop_button: Stopped");
         }
