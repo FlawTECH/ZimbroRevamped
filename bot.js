@@ -5,13 +5,10 @@ const jimp = require('jimp');
 const ytdl = require('ytdl-core');
 const fs = require('fs');
 const {google} = require('googleapis');
-const OAuth2 = google.auth.OAuth2;
-const readline = require('readline');
 
 const version = "19.08_07";
 const client = new Discord.Client();
 const songQueues = {};
-var SCOPES = ['https://www.googleapis.com/auth/youtube.readonly'];
 
 
 function lengthFromSeconds(seconds) {
@@ -192,13 +189,13 @@ function getSongQueue(guild) {
     if(typeof guild == 'object') guild = guild.id;
     if(!songQueues[guild]) songQueues[guild] = {
         'songs': [],
-        'dispatcher': undefined
+        'dispatcher': undefined,
+        'autoplay': false
     };
     return songQueues[guild];
 }
 
-function addToQueue(guild, url, length, info, user) {
-    let queue = getSongQueue(guild);
+function addToQueue(queue, url, length, info, user) {
     if(queue) {
         let len = queue.songs.push({
             'url': url,
@@ -216,7 +213,7 @@ function addToQueue(guild, url, length, info, user) {
     return 0;
 }
 
-function playQueue(msg, queue, voiceChannel, firstSong = false) {
+function playQueue(msg, queue, voiceChannel, firstSong = false, timing = "0s", videoInfo) {
     // Stopping if end of queue
     if(!queue.songs[0]) {
         voiceChannel.leave()
@@ -226,30 +223,77 @@ function playQueue(msg, queue, voiceChannel, firstSong = false) {
     // Establishing voice connection
     voiceChannel.join().then(connection => {
 
-        // Setting stream options
-        const streamOptions = { seek: 0, volume: 0.2 };
-        const stream = ytdl(queue.songs[0].url, { filter: 'audioonly' });
+        const streamOptions = { seek: 0, volume: 0.2};
+        let ytdlOptions = {filter: 'audioonly'};
+        if(timing != "0s") { ytdlOptions.begin = timing }
+
+        let stream = ytdl(queue.songs[0].url, ytdlOptions);
 
         if(!firstSong) {
             stream.on('info', (info) => {
                 embedYoutube(msg, info, false);
             });
         }
-
+        if(videoInfo) { // Hack until issue #443 ytdl-core is solved
+            ytdl.getInfo(queue.songs[0].url, (err, info) => {
+                embedYoutube(msg, videoInfo, false);
+            });
+        }
     
         // Playing the song
-        const dispatcher = connection.playStream(stream, streamOptions);
+        let dispatcher = connection.play(stream, streamOptions);
+        queue.dispatcher = dispatcher;
     
-        dispatcher.on('end', () => {
-            queue.songs.shift();
-            playQueue(msg, queue, voiceChannel);
+        dispatcher.on('finish', (reason) => {
+            // stream._events.info("lmao niggers");
+            stream.destroy();
+            if(reason) { // Deprecated with discordjs 12
+                console.log("reason",reason);
+                if(reason.startsWith('fastforward')) {
+                    queue.songs.shift();
+                    let timing = parseInt(reason.split('.')[1])+'s'
+                    playQueue(msg, queue, voiceChannel, true, timing);
+                }
+                else {
+                    queue.songs.shift();
+                    playQueue(msg, queue, voiceChannel);
+                }
+            }
+            else {
+                if(queue.autoplay && queue.songs.length == 1) {
+                    let url = queue.songs[0].url;
+                    ytdl.getInfo(url, (err, info) => {
+                        if(err) {
+                            sendEmbeddedMessage(msg, "Error",":x: [Autoplay] "+err);
+                        }
+                        else {
+                            let relatedLink = "https://www.youtube.com/watch?v="+info.related_videos[0].id
+                            ytdl.getInfo(relatedLink, (err2, info2) => {
+                                if(err2) {
+                                    sendEmbeddedMessage(msg, "Error",":x: [Autoplay] "+err);
+                                }
+                                else {
+                                    queue.songs.shift();
+                                    addToQueue(queue, relatedLink, info2.player_response.videoDetails.lengthSeconds, info2, msg.author.username);
+                                    playQueue(msg, queue, voiceChannel, false, "0s", info2);
+                                }
+                            });
+                        }
+                    });
+                }
+                else {
+                    queue.songs.shift();
+                    playQueue(msg, queue, voiceChannel);
+                }
+                dispatcher.destroy();
+            }
         });
         dispatcher.on('error', (e) => {
+            console.log(queue.songs.length);
             queue.songs.shift();
-            console.log("Error: " + e);
+            sendEmbeddedMessage(msg, "Error", ":x: [Dispatcher] " +e);
         });
     
-        queue.dispatcher = dispatcher;
     })
     .catch(err => sendEmbeddedMessage(msg, "Error", ":x: "+err));
 
@@ -266,7 +310,7 @@ function initYoutubePlay(videoUrl, voiceChannel, msg) {
             sendEmbeddedMessage(msg, "Error", ":x: "+err);
         }
         else {
-            queueLen = addToQueue(msg.guild, videoUrl, info.player_response.videoDetails.lengthSeconds, info, msg.author.username);
+            queueLen = addToQueue(queue, videoUrl, info.player_response.videoDetails.lengthSeconds, info, msg.author.username);
 
             // Success adding to queue
             if(queueLen > 0) {
@@ -364,10 +408,6 @@ function embedQueue(msg, queue, page) {
             }
         }
     });
-}
-
-function removeFromQueue(songs, index) {
-    
 }
 
 function enoughArgs(min, args, msg) {
@@ -654,9 +694,9 @@ commands = {
             if(enoughArgs(0, args, msg)) {
 
                 // Check if user is in voice channel
-                const { voiceChannel } = msg.member;
+                const { channel } = msg.member.voice;
     
-                if(!voiceChannel) {
+                if(!channel) {
                     sendEmbeddedMessage(msg, "Error", ":x: Please join a voice channel first.");
                     return;
                 }
@@ -672,7 +712,7 @@ commands = {
                     }
                     else {
                         // Play song
-                        initYoutubePlay(args[0], voiceChannel, msg);
+                        initYoutubePlay(args[0], channel, msg);
                     }
                 }
                 else { //Search for song then play it
@@ -688,7 +728,7 @@ commands = {
                             }
                             else {
                                 // Play song
-                                initYoutubePlay("https://youtube.com/watch?v="+res.data.items[0].id.videoId, voiceChannel, msg);
+                                initYoutubePlay("https://youtube.com/watch?v="+res.data.items[0].id.videoId, channel, msg);
                             }
                         }
                     });
@@ -734,6 +774,47 @@ commands = {
             }
         }
     },
+    "forward": {
+        description: "Fast forwards the current song for the desired seconds",
+        summon: function(msg, args) {
+            // if(enoughArgs(0, args, msg)) {
+            //     if(parseInt(args[0]) > 0) {
+
+            //         // Get info on current song
+            //         let queue = getSongQueue(msg.guild);
+            //         let time = queue.dispatcher.time;
+                    
+            //         // Inserting duplicate of song
+            //         queue.songs.splice(1,0,{
+            //             'url': queue.songs[0].url,
+            //             'title': queue.songs[0].title,
+            //             'videoID': queue.songs[0].videoID,
+            //             'lengthSeconds': queue.songs[0].lengthSeconds,
+            //             'avatarURL': queue.songs[0].avatarURL,
+            //             'thumbnailURL': queue.songs[0].thumbnailURL,
+            //             'authorName': queue.songs[0].authorName,
+            //             'requestedBy': queue.songs[0].requestedBy
+            //         });
+
+            //         let beginTime = parseInt(time/1000)+parseInt(args[0]);
+
+            //         if(beginTime > queue.songs[0].lengthSeconds) {
+            //             queue.dispatcher.end('skipcmd');
+            //         }
+            //         else {
+            //             // Replacing old song to play new one
+            //             queue.dispatcher.end('fastforward.'+beginTime);
+            //         }
+        
+            //         sendEmbeddedMessage(msg, "Success", ":fast_forward: Song fast forwarded to "+lengthFromSeconds(beginTime))
+            //     }
+            // }
+
+            sendEmbeddedMessage(msg, "Error", ":x: Feature temporarily disabled");
+
+        }
+
+    },
     "skip": {
         description: "Skips the current song",
         summon: function(msg, args) {
@@ -749,7 +830,7 @@ commands = {
         summon: function(msg, args) {
             let queue = getSongQueue(msg.guild);
             if(queue.songs.length>0) {
-                embedNowPlaying(msg, queue.songs[0], Math.floor(queue.dispatcher.time/1000));
+                embedNowPlaying(msg, queue.songs[0], Math.floor(queue.dispatcher.streamTime/1000));
             }
             else {
                 sendEmbeddedMessage(msg, "Error", ":x: No song playing on this server");
@@ -805,6 +886,14 @@ commands = {
             let queue = getSongQueue(msg.guild);
             queue.songs.splice(1, queue.songs.length-1);
             sendEmbeddedMessage(msg, "Success", ":bomb: Queue cleared")
+        }
+    },
+    "autoplay": {
+        description: "Toggles playing related videos automatically",
+        summon: function(msg, args) {
+            let queue = getSongQueue(msg.guild);
+            queue.autoplay = !queue.autoplay
+            sendEmbeddedMessage(msg, "Success", ":white_check_mark: Autoplay is now "+(queue.autoplay?"ON":"OFF"));
         }
     }
 }
