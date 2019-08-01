@@ -220,6 +220,13 @@ function playQueue(msg, queue, voiceChannel, firstSong = false, timing = "0s", v
         return;
     }
 
+    // Checking if joinable voice channel
+    if(!voiceChannel.joinable) {
+        sendEmbeddedMessage(msg, 'Error', ':x: Cannot join `'+voiceChannel.name+'`\nPlease make sure I have enough permissions to join first.');
+        queue.songs = [];
+        return;
+    }
+
     // Establishing voice connection
     voiceChannel.join().then(connection => {
 
@@ -339,7 +346,7 @@ function getTimeBeforePlay(queue) {
     
     // Remove time of song currently playing
     if(queue.dispatcher && total > 0) {
-        total -= Math.floor(queue.dispatcher.time/1000);
+        total -= Math.floor(queue.dispatcher.streamTime/1000);
     }
     return total;
 }
@@ -352,7 +359,7 @@ function getQueueTime(queue) {
     
     // Remove time of song currently playing
     if(queue.dispatcher && total > 0) {
-        total -= Math.floor(queue.dispatcher.time/1000);
+        total -= Math.floor(queue.dispatcher.streamTime/1000);
     }
     return total; 
 }
