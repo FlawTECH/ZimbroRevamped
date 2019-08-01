@@ -3,8 +3,8 @@ const prefs = require('./settings.json');
 const crypto = require('crypto');
 const jimp = require('jimp');
 const ytdl = require('ytdl-core');
-const fs = require('fs');
-const {google} = require('googleapis');
+const htmlparser = require('htmlparser2');
+const https = require('https');
 
 const version = "19.08_07";
 const client = new Discord.Client();
@@ -358,23 +358,41 @@ function getQueueTime(queue) {
 }
 
 function searchVideos(searchTerms, callback) {
-    var service = google.youtube({
-        version: 'v3',
-        auth: prefs.youtube_api_key
-    });
-
-    service.search.list({
-        part: 'snippet',
-        q: searchTerms,
-        maxResults: 1,
-        type: "video",
-        relevanceLanguage: "en"
-    }, function(err, res) {
-        if(err) {
-            callback(err);
-            return;
+    
+    // Parsing routine
+    let found = false;
+    let parser = new htmlparser.Parser({
+        onopentag: (name, attribs) => {
+            if(!found && name === 'a' && (attribs.href && attribs.href.startsWith('/watch?v='))) { // Take first result
+                found = true;
+                callback(undefined, attribs.href);
+            }
+        },
+        onend: () => {
+            if (!found) {
+                callback('No results', undefined)
+            }
         }
-        callback(undefined, res);
+    }, {decodeEntities: true});
+    
+
+    // Requesting YouTube
+    const options = {
+        hostname: 'www.youtube.com',
+        headers: { 'User-Agent': 'Zimbabro' }
+    }
+
+    https.get('https://www.youtube.com/results?search_query='+searchTerms.split(' ').join('+'), options, (resp) => {
+        let data = '';
+
+        resp.on('data', chunk => {
+            data+=chunk
+        });
+
+        resp.on('end', () => {
+            parser.write(data);
+            parser.end();
+        })
     });
 }
 
@@ -723,13 +741,8 @@ commands = {
                             sendEmbeddedMessage(msg, "Error", ":x: "+err);
                         }
                         else {
-                            if(res.data.items.length<1) {
-                                sendEmbeddedMessage(msg, "Error", ":x: No results found for these search terms.");
-                            }
-                            else {
-                                // Play song
-                                initYoutubePlay("https://youtube.com/watch?v="+res.data.items[0].id.videoId, channel, msg);
-                            }
+                            // Play song
+                            initYoutubePlay("https://youtube.com"+res, channel, msg);
                         }
                     });
                 }

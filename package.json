@@ -26,8 +26,7 @@
     "crypto": "^1.0.1",
     "discord.js": "github:discordjs/discord.js",
     "ffmpeg-static": "^2.5.0",
-    "google-auth-library": "^4.2.6",
-    "googleapis": "^40.0.1",
+    "htmlparser2": "^3.10.1",
     "jimp": "^0.6.4",
     "node-opus": "^0.3.2",
     "ytdl-core": "^0.29.4"
