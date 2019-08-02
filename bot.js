@@ -189,7 +189,7 @@ function getSongQueue(guild) {
     if(typeof guild == 'object') guild = guild.id;
     if(!songQueues[guild]) songQueues[guild] = {
         'songs': [],
-        'history': null,
+        'history': [],
         'dispatcher': undefined,
         'autoplay': false
     };
