@@ -287,9 +287,12 @@ function playQueue(msg, queue, voiceChannel, firstSong = false, timing = "0s", v
                         else {
                             // Checking history to avoid infinite loop
                             let relatedIdx = 0;
-                            for(let id in queue.history) {
-                                if(id === info.related_videos[0]) relatedIdx++
-                                break;
+                            for(id of queue.history) {
+                                if(id === info.related_videos[0]) {
+                                    console.log('not today')
+                                    relatedIdx++
+                                    break;
+                                }
                             }
                             let relatedLink = "https://www.youtube.com/watch?v="+info.related_videos[relatedIdx].id
 
