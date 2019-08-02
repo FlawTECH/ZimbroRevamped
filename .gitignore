@@ -68,3 +68,6 @@ typings/
 
 # Auth config
 settings.json
+
+# Personal script
+run_bot.bat

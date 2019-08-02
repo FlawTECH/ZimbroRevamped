@@ -189,6 +189,7 @@ function getSongQueue(guild) {
     if(typeof guild == 'object') guild = guild.id;
     if(!songQueues[guild]) songQueues[guild] = {
         'songs': [],
+        'history': null,
         'dispatcher': undefined,
         'autoplay': false
     };
@@ -213,6 +214,12 @@ function addToQueue(queue, url, length, info, user) {
     return 0;
 }
 
+function addToHistory(queue, url) {
+    let id = ytdl.getURLVideoID(url);
+    queue.history.unshift(id);
+    queue.history[3] = null;
+}
+
 function playQueue(msg, queue, voiceChannel, firstSong = false, timing = "0s", videoInfo) {
     // Stopping if end of queue
     if(!queue.songs[0]) {
@@ -229,7 +236,10 @@ function playQueue(msg, queue, voiceChannel, firstSong = false, timing = "0s", v
 
     // Establishing voice connection
     voiceChannel.join().then(connection => {
+        // Adding song to history
+        addToHistory(queue, queue.songs[0].url);
 
+        // Setting up and playing audio
         const streamOptions = { seek: 0, volume: 0.2};
         let ytdlOptions = {filter: 'audioonly'};
         if(timing != "0s") { ytdlOptions.begin = timing }
@@ -267,6 +277,7 @@ function playQueue(msg, queue, voiceChannel, firstSong = false, timing = "0s", v
                 }
             }
             else {
+                // Autoplay enabled
                 if(queue.autoplay && queue.songs.length == 1) {
                     let url = queue.songs[0].url;
                     ytdl.getInfo(url, (err, info) => {
@@ -274,7 +285,15 @@ function playQueue(msg, queue, voiceChannel, firstSong = false, timing = "0s", v
                             sendEmbeddedMessage(msg, "Error",":x: [Autoplay] "+err);
                         }
                         else {
-                            let relatedLink = "https://www.youtube.com/watch?v="+info.related_videos[0].id
+                            // Checking history to avoid infinite loop
+                            let relatedIdx = 0;
+                            for(let id in queue.history) {
+                                if(id === info.related_videos[0]) relatedIdx++
+                                break;
+                            }
+                            let relatedLink = "https://www.youtube.com/watch?v="+info.related_videos[relatedIdx].id
+
+                            // Adding video to queue
                             ytdl.getInfo(relatedLink, (err2, info2) => {
                                 if(err2) {
                                     sendEmbeddedMessage(msg, "Error",":x: [Autoplay] "+err);
