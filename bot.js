@@ -288,8 +288,7 @@ function playQueue(msg, queue, voiceChannel, firstSong = false, timing = "0s", v
                             // Checking history to avoid infinite loop
                             let relatedIdx = 0;
                             for(id of queue.history) {
-                                if(id === info.related_videos[0]) {
-                                    console.log('not today')
+                                if(id === info.related_videos[0].id) {
                                     relatedIdx++
                                     break;
                                 }
