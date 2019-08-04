@@ -217,7 +217,7 @@ function addToQueue(queue, url, length, info, user) {
 function addToHistory(queue, url) {
     let id = ytdl.getURLVideoID(url);
     queue.history.unshift(id);
-    queue.history[3] = null;
+    queue.history[10] = null; // Maximum history
 }
 
 function playQueue(msg, queue, voiceChannel, firstSong = false, timing = "0s", videoInfo) {
@@ -289,7 +289,8 @@ function playQueue(msg, queue, voiceChannel, firstSong = false, timing = "0s", v
                             let relatedIdx = 0;
                             for(id of queue.history) {
                                 if(id === info.related_videos[0].id) {
-                                    relatedIdx++
+                                    relatedIdx++;
+                                    while(info.related_videos[relatedIdx].list) relatedIdx++; // Prevents autoplaying playlists
                                     break;
                                 }
                             }
@@ -298,7 +299,8 @@ function playQueue(msg, queue, voiceChannel, firstSong = false, timing = "0s", v
                             // Adding video to queue
                             ytdl.getInfo(relatedLink, (err2, info2) => {
                                 if(err2) {
-                                    sendEmbeddedMessage(msg, "Error",":x: [Autoplay] "+err);
+                                    sendEmbeddedMessage(msg, "Error",":x: [Autoplay] "+err2);
+                                    console.log(relatedLink);
                                 }
                                 else {
                                     queue.songs.shift();
@@ -317,7 +319,6 @@ function playQueue(msg, queue, voiceChannel, firstSong = false, timing = "0s", v
             }
         });
         dispatcher.on('error', (e) => {
-            console.log(queue.songs.length);
             queue.songs.shift();
             sendEmbeddedMessage(msg, "Error", ":x: [Dispatcher] " +e);
         });
@@ -407,7 +408,7 @@ function searchVideos(searchTerms, callback) {
     // Requesting YouTube
     const options = {
         hostname: 'www.youtube.com',
-        headers: { 'User-Agent': 'Zimbabro' }
+        headers: { 'User-Agent': 'Zimbro' }
     }
 
     https.get('https://www.youtube.com/results?search_query='+searchTerms.split(' ').join('+'), options, (resp) => {
@@ -1050,18 +1051,37 @@ function processCommand(msg) {
     commands[command].summon(msg, args);
 }
 
+function handleStdin() {
+    const stdin = process.stdin;
+    const stdout = process.stdout;
+
+    stdout.write('>> ');
+    stdin.setEncoding('utf-8');
+    stdin.on('data', (data) => {
+        data = data.toLowerCase().replace('\n','').replace('\r', '');
+        switch(data) {
+            case 'exit':
+                process.exit(0);
+                break;
+            default:
+                console.log('Unknown command.');
+        }
+        stdout.write('>> ');
+    });
+}
 
 
 client.on('ready', () => {
     var id = crypto.randomBytes(5).toString('hex');
     console.log(`Logged in as ${client.user.tag}, build id: #`+id);
     client.user.setPresence({game: {name: prefs.prefix+"help | v"+version+" #"+id}, status: 'online'});
+    handleStdin();
 });
 
 client.on('message', msg => {
     if (msg.content.startsWith(prefs.prefix)) {
         processCommand(msg);
-  }
+    }
 });
 
 client.login(prefs.token);
