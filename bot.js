@@ -10,7 +10,6 @@ const version = "19.08_07";
 const client = new Discord.Client();
 const songQueues = {};
 
-
 function lengthFromSeconds(seconds) {
     var hours = Math.floor(seconds / 3600);
     var minutes = Math.floor(seconds / 60) - hours * 60;
@@ -482,7 +481,7 @@ function measureText(font, text) {
     return x;
 };
 
-commands = {
+let commands = {
     "ping": {
         description: "Shows the delay between the bot and Discord servers",
         summon: function(msg, args) {
@@ -862,7 +861,7 @@ commands = {
         summon: function(msg, args) {
             let queue = getSongQueue(msg.guild);
             if(queue) {
-                queue.dispatcher.end('skipcmd');
+                queue.dispatcher && queue.dispatcher.end('skipcmd');
             }
             sendEmbeddedMessage(msg, "Success", ":track_next: Song skipped");
         }
@@ -938,6 +937,18 @@ commands = {
             sendEmbeddedMessage(msg, "Success", ":white_check_mark: Autoplay is now "+(queue.autoplay?"ON":"OFF"));
         }
     }
+}
+
+commands['p']   = makeCmdAlias('play');
+commands['s']   = makeCmdAlias('skip');
+commands['ap']  = makeCmdAlias('autoplay');
+
+function makeCmdAlias(cmd) {
+    return {
+        description: commands[cmd].description || undefined,
+        summon: commands[cmd].summon || undefined,
+        subcommands: commands[cmd].subcommands || undefined
+    };
 }
 
 function isCleanMessage(msg) {
@@ -1038,7 +1049,7 @@ function processCommand(msg) {
         return;
     }
     // YouTube links are case sensitive
-    else if(command === "play" || commands === "p") {
+    else if(command === "play" || command === "p") {
         args = msg.content.split(" ");
         args.splice(0,1);
     }
