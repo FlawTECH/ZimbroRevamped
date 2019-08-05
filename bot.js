@@ -190,7 +190,7 @@ function getSongQueue(guild) {
         'songs': [],
         'history': [],
         'dispatcher': undefined,
-        'autoplay': false
+        'autoplay': true
     };
     return songQueues[guild];
 }
