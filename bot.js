@@ -1,465 +1,16 @@
-const Discord = require('discord.js');
 const prefs = require('./settings.json');
 const crypto = require('crypto');
 const jimp = require('jimp');
-const ytdl = require('ytdl-core');
-const htmlparser = require('htmlparser2');
-const https = require('https');
+const music = require('./util/music');
+const imgUtil = require('./util/image');
+const discordUtil = require('./util/discord');
 
-const version = "19.08_07";
-const client = new Discord.Client();
-const songQueues = {};
-
-function lengthFromSeconds(seconds) {
-    var hours = Math.floor(seconds / 3600);
-    var minutes = Math.floor(seconds / 60) - hours * 60;
-    var seconds = seconds - hours * 3600 - minutes * 60;
-
-    return (hours>0?hours.toString().padStart(2, '0')+":":'')+minutes.toString().padStart(2, '0')+":"+seconds.toString().padStart(2, '0');
-}
-
-function sendEmbeddedMessage(msg, title, text, image) {
-
-    if(image !== undefined) {
-        msg.channel.send({
-            embed: {
-                color: 8603131,
-                author: {
-                    name: client.user.username,
-                    icon_url: client.user.avatarURL
-                },
-                image: {
-                    url: image
-                },
-                fields: [{
-                    name: title,
-                    value: text
-                }],
-                footer: {
-                    icon_url: msg.author.avatarURL,
-                    text: "'"+msg.content.split(" ")[0].substring(prefs.prefix.length)+"' issued by "+msg.author.tag
-                }
-            }
-        });
-    }
-    else {
-        msg.channel.send({
-            embed: {
-                color: 8603131,
-                author: {
-                    name: client.user.username,
-                    icon_url: client.user.avatarURL
-                },
-                fields: [{
-                    name: title,
-                    value: text
-                }],
-                footer: {
-                    icon_url: msg.author.avatarURL,
-                    text: "'"+msg.content.split(" ")[0].substring(prefs.prefix.length)+"' issued by "+msg.author.tag
-                }
-            }
-        });
-    }
-
-    
-}
-
-function embedYoutube(msg, video, isAddQueue, queuePos = 1, queueTime = 0) {
-
-    if(isAddQueue) {
-        msg.channel.send({
-            embed: {
-                title: video.player_response.videoDetails.title,
-                url: "https://www.youtube.com/watch?v="+video.player_response.videoDetails.videoId,
-                color: 14496300,
-                author: {
-                    name: isAddQueue?"Added to queue":"Now playing",
-                    icon_url: video.author.avatar
-                },
-                thumbnail: {
-                    url: video.player_response.videoDetails.thumbnail.thumbnails[video.player_response.videoDetails.thumbnail.thumbnails.length-1].url
-                },
-                fields: [
-                    {
-                        name: "Duration",
-                        value: lengthFromSeconds(video.player_response.videoDetails.lengthSeconds),
-                        inline: true
-                    },
-                    {
-                        name: "Queue position",
-                        value: queuePos,
-                        inline: true
-                    },
-                    {
-                        name: "Playing in",
-                        value: lengthFromSeconds(queueTime),
-                        inline: true
-                    },
-                    {
-                        name: "Uploaded by",
-                        value: video.author.name,
-                        inline: true
-                    }
-                ],
-                footer: {
-                    icon_url: msg.author.avatarURL,
-                    text: "'"+msg.content.split(" ")[0].substring(prefs.prefix.length)+"' issued by "+msg.author.tag
-                }
-            }
-        });
-    }
-    else {
-        msg.channel.send({
-            embed: {
-                title: video.player_response.videoDetails.title,
-                url: "https://www.youtube.com/watch?v="+video.player_response.videoDetails.videoId,
-                color: 14496300,
-                author: {
-                    name: isAddQueue?":white_check_mark: Added to queue":"Now playing",
-                    icon_url: video.author.avatar
-                },
-                thumbnail: {
-                    url: video.player_response.videoDetails.thumbnail.thumbnails[video.player_response.videoDetails.thumbnail.thumbnails.length-1].url
-                },
-                fields: [
-                    {
-                        name: "Duration",
-                        value: lengthFromSeconds(video.player_response.videoDetails.lengthSeconds),
-                        inline: true
-                    },
-                    {
-                        name: "Uploaded by",
-                        value: video.author.name,
-                        inline: true
-                    }
-                ],
-                footer: {
-                    icon_url: msg.author.avatarURL,
-                    text: "'"+msg.content.split(" ")[0].substring(prefs.prefix.length)+"' issued by "+msg.author.tag
-                }
-            }
-        });
-    }
-}
-
-function embedNowPlaying(msg, song, playTime) {
-    msg.channel.send({
-        embed: {
-            title: song.title,
-            url: "https://www.youtube.com/watch?v="+song.videoID,
-            description: "`"+getProgressBar(playTime, song.lengthSeconds, 30)+"\n"+lengthFromSeconds(playTime)+" / "+lengthFromSeconds(song.lengthSeconds)+"`",
-            color: 14496300,
-            author: {
-                name: "Now playing",
-                icon_url: song.avatarURL
-            },
-            thumbnail: {
-                url: song.thumbnailURL
-            },
-            fields: [
-                {
-                    name: "Uploaded by",
-                    value: song.authorName,
-                    inline: true
-                },
-                {
-                    name: "Requested by",
-                    value: song.requestedBy,
-                    inline: true
-                }
-            ],
-            footer: {
-                icon_url: msg.author.avatarURL,
-                text: "'"+msg.content.split(" ")[0].substring(prefs.prefix.length)+"' issued by "+msg.author.tag
-            }
-        }
-    });
-}
-
-function getProgressBar(timeStart, timeEnd, length) {
-    let progress = Math.floor((timeStart/timeEnd)*length);
-    if(progress == 0) { progress = 1; }
-    return "▬".repeat(progress-1)+"🔘"+"▬".repeat(length-progress-1);
-}
-
-function getSongQueue(guild) {
-    if(!guild) return;
-    if(typeof guild == 'object') guild = guild.id;
-    if(!songQueues[guild]) songQueues[guild] = {
-        'songs': [],
-        'history': [],
-        'dispatcher': undefined,
-        'autoplay': true
-    };
-    return songQueues[guild];
-}
-
-function addToQueue(queue, url, length, info, user) {
-    if(queue) {
-        let len = queue.songs.push({
-            'url': url,
-            'title': info.player_response.videoDetails.title,
-            'videoID': info.player_response.videoDetails.videoId,
-            'lengthSeconds': parseInt(length),
-            'avatarURL': info.author.avatar,
-            'thumbnailURL': info.player_response.videoDetails.thumbnail.thumbnails[info.player_response.videoDetails.thumbnail.thumbnails.length-1].url,
-            'authorName': info.author.name,
-            'requestedBy': user
-        });
-
-        return len;
-    }
-    return 0;
-}
-
-function addToHistory(queue, url) {
-    let id = ytdl.getURLVideoID(url);
-    queue.history.unshift(id);
-    queue.history[10] = null; // Maximum history
-}
-
-function playQueue(msg, queue, voiceChannel, firstSong = false, timing = "0s", videoInfo) {
-    // Stopping if end of queue
-    if(!queue.songs[0]) {
-        voiceChannel.leave()
-        return;
-    }
-
-    // Checking if joinable voice channel
-    if(!voiceChannel.joinable) {
-        sendEmbeddedMessage(msg, 'Error', ':x: Cannot join `'+voiceChannel.name+'`\nPlease make sure I have enough permissions to join first.');
-        queue.songs = [];
-        return;
-    }
-
-    // Establishing voice connection
-    voiceChannel.join().then(connection => {
-        // Adding song to history
-        addToHistory(queue, queue.songs[0].url);
-
-        // Setting up and playing audio
-        const streamOptions = { seek: 0, volume: 0.2};
-        let ytdlOptions = {filter: 'audioonly'};
-        if(timing != "0s") { ytdlOptions.begin = timing }
-
-        let stream = ytdl(queue.songs[0].url, ytdlOptions);
-
-        if(!firstSong) {
-            stream.on('info', (info) => {
-                embedYoutube(msg, info, false);
-            });
-        }
-        if(videoInfo) { // Hack until issue #443 ytdl-core is solved
-            ytdl.getInfo(queue.songs[0].url, (err, info) => {
-                embedYoutube(msg, videoInfo, false);
-            });
-        }
-    
-        // Playing the song
-        let dispatcher = connection.play(stream, streamOptions);
-        queue.dispatcher = dispatcher;
-    
-        dispatcher.on('finish', (reason) => {
-            // stream._events.info("lmao niggers");
-            stream.destroy();
-            if(reason) { // Deprecated with discordjs 12
-                console.log("reason",reason);
-                if(reason.startsWith('fastforward')) {
-                    queue.songs.shift();
-                    let timing = parseInt(reason.split('.')[1])+'s'
-                    playQueue(msg, queue, voiceChannel, true, timing);
-                }
-                else {
-                    queue.songs.shift();
-                    playQueue(msg, queue, voiceChannel);
-                }
-            }
-            else {
-                // Autoplay enabled
-                if(queue.autoplay && queue.songs.length == 1) {
-                    let url = queue.songs[0].url;
-                    ytdl.getInfo(url, (err, info) => {
-                        if(err) {
-                            sendEmbeddedMessage(msg, "Error",":x: [Autoplay] "+err);
-                        }
-                        else {
-                            // Checking history to avoid infinite loop
-                            let relatedIdx = 0;
-                            for(id of queue.history) {
-                                if(id === info.related_videos[0].id) {
-                                    relatedIdx++;
-                                    while(info.related_videos[relatedIdx].list) relatedIdx++; // Prevents autoplaying playlists
-                                    break;
-                                }
-                            }
-                            let relatedLink = "https://www.youtube.com/watch?v="+info.related_videos[relatedIdx].id
-
-                            // Adding video to queue
-                            ytdl.getInfo(relatedLink, (err2, info2) => {
-                                if(err2) {
-                                    sendEmbeddedMessage(msg, "Error",":x: [Autoplay] "+err2);
-                                    console.log(relatedLink);
-                                }
-                                else {
-                                    queue.songs.shift();
-                                    addToQueue(queue, relatedLink, info2.player_response.videoDetails.lengthSeconds, info2, msg.author.username);
-                                    playQueue(msg, queue, voiceChannel, false, "0s", info2);
-                                }
-                            });
-                        }
-                    });
-                }
-                else {
-                    queue.songs.shift();
-                    playQueue(msg, queue, voiceChannel);
-                }
-                dispatcher.destroy();
-            }
-        });
-        dispatcher.on('error', (e) => {
-            queue.songs.shift();
-            sendEmbeddedMessage(msg, "Error", ":x: [Dispatcher] " +e);
-        });
-    
-    })
-    .catch(err => sendEmbeddedMessage(msg, "Error", ":x: "+err));
-
-}
-
-function initYoutubePlay(videoUrl, voiceChannel, msg) {
-    let queueLen = 0;
-    let queue = getSongQueue(msg.guild);
-
-    // Getting video info
-    ytdl.getBasicInfo(videoUrl, (err, info) => {
-        if(err) {
-            // Not added to queue for ytdl related reason
-            sendEmbeddedMessage(msg, "Error", ":x: "+err);
-        }
-        else {
-            queueLen = addToQueue(queue, videoUrl, info.player_response.videoDetails.lengthSeconds, info, msg.author.username);
-
-            // Success adding to queue
-            if(queueLen > 0) {
-                embedYoutube(msg, info, true, queueLen, getTimeBeforePlay(queue));
-
-                if(queueLen == 1) { // First song in queue, init play
-                    playQueue(msg, queue, voiceChannel, true);
-                }
-            }
-
-            // Not added to queue for some other reason
-            else {
-                sendEmbeddedMessage(msg, "Error", ":x: Unable to add song to queue.");
-            }
-        }
-    });
-}
-
-function getTimeBeforePlay(queue) {
-    let total = 0;
-    queue.songs.forEach((song, idx) => {
-        if(idx != queue.songs.length-1) {
-            total += song.lengthSeconds;
-        }
-    });
-    
-    // Remove time of song currently playing
-    if(queue.dispatcher && total > 0) {
-        total -= Math.floor(queue.dispatcher.streamTime/1000);
-    }
-    return total;
-}
-
-function getQueueTime(queue) {
-    let total = 0;
-    queue.songs.forEach((song, idx) => {
-        total += song.lengthSeconds;
-    });
-    
-    // Remove time of song currently playing
-    if(queue.dispatcher && total > 0) {
-        total -= Math.floor(queue.dispatcher.streamTime/1000);
-    }
-    return total; 
-}
-
-function searchVideos(searchTerms, callback) {
-    
-    // Parsing routine
-    let found = false;
-    let parser = new htmlparser.Parser({
-        onopentag: (name, attribs) => {
-            if(!found && name === 'a' && (attribs.href && attribs.href.startsWith('/watch?v='))) { // Take first result
-                found = true;
-                callback(undefined, attribs.href);
-            }
-        },
-        onend: () => {
-            if (!found) {
-                callback('No results', undefined)
-            }
-        }
-    }, {decodeEntities: true});
-    
-
-    // Requesting YouTube
-    const options = {
-        hostname: 'www.youtube.com',
-        headers: { 'User-Agent': 'Zimbro' }
-    }
-
-    https.get('https://www.youtube.com/results?search_query='+searchTerms.split(' ').join('+'), options, (resp) => {
-        let data = '';
-
-        resp.on('data', chunk => {
-            data+=chunk
-        });
-
-        resp.on('end', () => {
-            parser.write(data);
-            parser.end();
-        })
-    });
-}
-
-function embedQueue(msg, queue, page) {
-
-    let totalPages = Math.ceil((queue.songs.length-1)/10);
-    if(totalPages === 0) { totalPages = 1; }
-
-    let prettyQueue = page===1?':arrow_forward: **Now playing**':':arrow_heading_down: **Upcoming**';
-    if(page === 1) { // Printing now playing
-        prettyQueue+='\n['+queue.songs[0].title+']('+queue.songs[0].url+') `('+lengthFromSeconds(queue.songs[0].lengthSeconds)+') ౼ Requested by '+queue.songs[0].requestedBy+'`\n\n:arrow_heading_down: **Upcoming**';
-    }
-
-    // Pretty printing page
-    for(var i = ((page-1)*10)+1; i <= page*10; i++) {
-        if(!queue.songs[i]) { break; }
-        prettyQueue+='\n`'+i+'.` ['+queue.songs[i].title+']('+queue.songs[i].url+') `('+lengthFromSeconds(queue.songs[i].lengthSeconds)+') ౼ Requested by '+queue.songs[i].requestedBy+'`\n';
-    };
-
-    msg.channel.send({
-        embed: {
-            description: prettyQueue,
-            color: 8603131,
-            author: {
-                name: client.user.username + " | Queue length: "+lengthFromSeconds(getQueueTime(queue)),
-                icon_url: client.user.avatarURL
-            },
-            footer: {
-                icon_url: msg.author.avatarURL,
-                text: "'"+msg.content.split(" ")[0].substring(prefs.prefix.length)+"' issued by "+msg.author.tag + ' | Page '+page+'/'+totalPages
-            }
-        }
-    });
-}
+const version = "19.08_14";
 
 function enoughArgs(min, args, msg) {
     if(args.length < min+1) {
         cmd = getCurrentCommand(msg);
-        sendEmbeddedMessage(msg, "Error", ':x: Too few arguments. Please type `'+prefs.prefix+"help "+cmd+" "+args[0]+"` for more info");
+        discordUtil.sendEmbeddedMessage(msg, "Error", ':x: Too few arguments. Please type `'+prefs.prefix+"help "+cmd+" "+args[0]+"` for more info");
         return false;
     }
     return true;
@@ -469,18 +20,6 @@ function getCurrentCommand(msg) {
     return msg.content.split(" ")[0].substring(prefs.prefix.length);
 }
 
-function measureText(font, text) {
-    var x = 0;
-    for (var i = 0; i < text.length; i++) {
-        if (font.chars[text[i]]) {
-            x += font.chars[text[i]].xoffset
-              + (font.kernings[text[i]] && font.kernings[text[i]][text[i+1]] ? font.kernings[text[i]][text[i+1]] : 0)
-              + (font.chars[text[i]].xadvance || 0);
-        }
-    }
-    return x;
-};
-
 let commands = {
     "ping": {
         description: "Shows the delay between the bot and Discord servers",
@@ -489,12 +28,12 @@ let commands = {
                 embed: {
                     color: 8603131,
                     author: {
-                        name: client.user.username,
-                        icon_url: client.user.avatarURL
+                        name: discordUtil.getClient().user.username,
+                        icon_url: discordUtil.getClient().user.avatarURL
                     },
                     fields: [{
                         name: "Server delay",
-                        value: ":heartbeat: "+client.ping+" ms"
+                        value: ":heartbeat: "+discordUtil.getClient().ping+" ms"
                     }],
                     footer: {
                         icon_url: msg.author.avatarURL,
@@ -551,92 +90,18 @@ let commands = {
 
             // No args
             if(args.length == 0) {
-                sendEmbeddedMessage(msg, "Error", ":x: Too few arguments. Type `"+prefs.prefix+"help "+Object.keys(commands)[Object.keys(commands).indexOf(command)]+"` for more info");
+                discordUtil.sendEmbeddedMessage(msg, "Error", ":x: Too few arguments. Type `"+prefs.prefix+"help "+Object.keys(commands)[Object.keys(commands).indexOf(command)]+"` for more info");
                 return;
             }
             else if(!Object.keys(this.subcommands).includes(args[0])) {
-                sendEmbeddedMessage(msg, "Error", ":x: Unknown argument(s). Type `"+prefs.prefix+"help "+Object.keys(commands)[Object.keys(commands).indexOf(command)]+"` for more info");
+                discordUtil.sendEmbeddedMessage(msg, "Error", ":x: Unknown argument(s). Type `"+prefs.prefix+"help "+Object.keys(commands)[Object.keys(commands).indexOf(command)]+"` for more info");
                 return;
             }
 
             // No embeds
             if(msg.attachments.size == 0) {
-                sendEmbeddedMessage(msg, "Error", ":x: You need to embed and comment an image to perform this command as shown on the image below", "https://pli.io/FGBbm.png")
+                discordUtil.sendEmbeddedMessage(msg, "Error", ":x: You need to embed and comment an image to perform this command as shown on the image below", "https://pli.io/FGBbm.png")
                 return;
-            }
-
-            // Used to send a modified image
-            function sendImageAsBuffer(err, buf, text, mime, ext) {
-                // Sending resized image
-                msg.channel.send({
-                    embed: {
-                        color: 8603131,
-                        author: {
-                            name: client.user.username,
-                            icon_url: client.user.avatarURL
-                        },
-                        fields: [{
-                            name: "Success !",
-                            value: text
-                        }],
-                        footer: {
-                            icon_url: msg.author.avatarURL,
-                            text: "'"+msg.content.split(" ")[0].substring(prefs.prefix.length)+"' issued by "+msg.author.tag
-                        }
-                    },
-                    files: [{
-                        attachment: buf,
-                        name: 'image.'+extension
-                    }]
-                });
-            }
-
-            function writeArrayToImage(textArray, img, fontSize, mime, extension) {
-                availableSizes = [8, 10, 12, 14, 16, 32, 64, 128];
-                heightForSizes = [6, 7, 8, 9, 10, 20, 35, 52]
-                jimp.loadFont("font/upheaval"+fontSize+".fnt", (err, font) => {
-                    // Preparing text lines
-                    thisLine = 0;
-                    lines = [];
-                    first = true;
-                    for(var i=0; i<textArray.length; i++) {
-                        if(lines[thisLine] === undefined) {
-                            lines[thisLine] = "";
-                            first = true;
-                        }
-                        else {
-                            first = false;
-                        }
-                        if(measureText(font, lines[thisLine] +" "+ textArray[i]) < img.bitmap.width-img.bitmap.width*0.06) {
-                            lines[thisLine]+=first?textArray[i]:" "+textArray[i];
-                        }
-                        else if(!first) {
-                            if(availableSizes.indexOf(fontSize) > 0 && lines[thisLine] !== undefined && lines[thisLine].split(' ').length<3) {
-                                return writeArrayToImage(textArray, img, availableSizes[availableSizes.indexOf(fontSize)-1], mime, extension);
-                            }
-                            thisLine++;
-                            i--;
-                        }
-                        else {
-                            if(availableSizes.indexOf(fontSize) === 0) {
-                                sendEmbeddedMessage(msg, "Error", ":x: Text won't fit. Please consider using a bigger image or smaller words");
-                                return;
-                            }
-                            else {
-                                return writeArrayToImage(textArray, img, availableSizes[availableSizes.indexOf(fontSize)-1], mime, extension);
-                            }
-                        }
-                    }
-                    // Printing text on image
-                    for(var i=0; i<lines.length; i++) {
-                        img.print(font, img.bitmap.width*0.03, (i*heightForSizes[availableSizes.indexOf(fontSize)])+(i*3), lines[i]);
-                    }
-
-                    // Sending image
-                    img.getBuffer(mime, (err, buf) => {
-                        sendImageAsBuffer(err, buf, ":white_check_mark: Text added on image", mime, extension);
-                    });
-                });
             }
             
             // Preparing image
@@ -660,23 +125,23 @@ let commands = {
                         height = parseInt(args[2]);
 
                         if(width>5000 || height>5000) {
-                            sendEmbeddedMessage(msg, "Error", ":x: Width and height are limited to 5000 pixels to spare some bandwidth");
+                            discordUtil.sendEmbeddedMessage(msg, "Error", ":x: Width and height are limited to 5000 pixels to spare some bandwidth");
                             return;
                         }
 
                         img = img.resize(parseInt(args[1]), parseInt(args[2]));
-                        img.getBuffer(mime, (err, buf) => { sendImageAsBuffer(err, buf, ":white_check_mark: Your image has been resized to "+parseInt(args[1])+"x"+parseInt(args[2])+" pixels.") }, mime, extension);
+                        img.getBuffer(mime, (err, buf) => { imgUtil.sendImageAsBuffer(err, buf, ":white_check_mark: Your image has been resized to "+parseInt(args[1])+"x"+parseInt(args[2])+" pixels.") }, mime, extension);
                     }
                 }
                 else if(args[0] === "grey") {
                     img = img.greyscale();
-                    img.getBuffer(mime, (err, buf) => { sendImageAsBuffer(err, buf, ":white_check_mark: Your image has been greyed out.") }, mime, extension);
+                    img.getBuffer(mime, (err, buf) => { imgUtil.sendImageAsBuffer(err, buf, ":white_check_mark: Your image has been greyed out.") }, mime, extension);
                 }
                 else if(args[0] === "mirror") {
                     if(enoughArgs(1, args, msg)) {
                         isHorizontal = args[1] === "h"
                         img = img.flip(isHorizontal, !isHorizontal);
-                        img.getBuffer(mime, (err, buf) => { sendImageAsBuffer(err, buf, ":white_check_mark Image flipped"+ isHorizontal?"horizontally":"vertically") }, mime, extension);
+                        img.getBuffer(mime, (err, buf) => { imgUtil.sendImageAsBuffer(err, buf, ":white_check_mark Image flipped"+ isHorizontal?"horizontally":"vertically") }, mime, extension);
                     }
                 }
                 else if(args[0] === "rotate") {
@@ -686,7 +151,7 @@ let commands = {
                         img = img.background(0x00000000, (err, newimg) => { 
                             mime = jimp.MIME_PNG;
                             extension = "png";
-                            newimg.getBuffer(jimp.MIME_PNG, (err, buf) => { sendImageAsBuffer(err, buf, ":white_check_mark: Image rotated by "+deg+" degrees") }, mime, extension);
+                            newimg.getBuffer(jimp.MIME_PNG, (err, buf) => { imgUtil.sendImageAsBuffer(err, buf, ":white_check_mark: Image rotated by "+deg+" degrees") }, mime, extension);
                         })
                     }
                 }
@@ -695,7 +160,7 @@ let commands = {
                         masked.resize(img.bitmap.width, img.bitmap.height);
                         masked.opacity(0.3, (err, fadedMask) => {
                             img.composite(fadedMask, 0, 0, (err, finalImg) => {
-                                finalImg.getBuffer(mime, (err, buf) => { sendImageAsBuffer(err, buf, ":white_check_mark: Image has been gayed out", mime, extension) });
+                                finalImg.getBuffer(mime, (err, buf) => { imgUtil.sendImageAsBuffer(err, buf, ":white_check_mark: Image has been gayed out", mime, extension) });
                             });
                         })
                     });
@@ -704,12 +169,12 @@ let commands = {
                     if(enoughArgs(1, args, msg)) {
                         pixels = parseInt(args[1]);
                         img = img.blur(pixels>100?100:pixels);
-                        img.getBuffer(mime, (err, buf) => { sendImageAsBuffer(err, buf, ":white_check_mark: Image has been blurred by "+ (pixels>100?100:pixels) +" pixels",mime, extension) });
+                        img.getBuffer(mime, (err, buf) => { imgUtil.sendImageAsBuffer(err, buf, ":white_check_mark: Image has been blurred by "+ (pixels>100?100:pixels) +" pixels",mime, extension) });
                     }
                 }
                 else if(args[0] === "sepia") {
                     img.sepia((err, sepiad) => {
-                        sepiad.getBuffer(mime, (err, buf) => { sendImageAsBuffer(err, buf, ":white_check_mark: Image has been aged out", mime, extension) });
+                        sepiad.getBuffer(mime, (err, buf) => { imgUtil.sendImageAsBuffer(err, buf, ":white_check_mark: Image has been aged out", mime, extension) });
                     });
                 }
                 else if(args[0] === "poster") {
@@ -717,7 +182,7 @@ let commands = {
                         level = parseInt(args[1]);
                         img.posterize(level, (err, postered) => { 
                             postered.getBuffer(mime, (err, buf) => { 
-                                sendImageAsBuffer(err, buf, ":white_check_mark: Image has been posterized (level "+level+")");
+                                imgUtil.sendImageAsBuffer(err, buf, ":white_check_mark: Image has been posterized (level "+level+")");
                              });
                          });
                     }
@@ -725,12 +190,12 @@ let commands = {
                 else if(args[0] === "addtext") {
                     if(enoughArgs(1, args, msg)) {
                         textArray = args.slice(1);
-                        img = writeArrayToImage(textArray, img, 128, mime, extension);
+                        img = imgUtil.writeArrayToImage(textArray, img, 128, mime, extension);
                     }
                 }
 
             }).catch(function (err) {
-                sendEmbeddedMessage(msg, "Error", ":x: An error has occured.\n\r`"+err+"`");
+                discordUtil.sendEmbeddedMessage(msg, "Error", ":x: An error has occured.\n\r`"+err+"`");
             });
         }
     },
@@ -743,7 +208,7 @@ let commands = {
                 const { channel } = msg.member.voice;
     
                 if(!channel) {
-                    sendEmbeddedMessage(msg, "Error", ":x: Please join a voice channel first.");
+                    discordUtil.sendEmbeddedMessage(msg, "Error", ":x: Please join a voice channel first.");
                     return;
                 }
 
@@ -754,23 +219,23 @@ let commands = {
                     //Check if playlist or not
                     const playlistregex = new RegExp(/^http(s)?:\/\/(www\.)?youtube\.com\/watch\?v=[a-z0-9-]*&list=[a-z0-9-]*$/);
                     if(playlistregex.test(args[0].toLowerCase())) {
-                        sendEmbeddedMessage(msg, "Error", ":x: Playlists not yet implemented");
+                        discordUtil.sendEmbeddedMessage(msg, "Error", ":x: Playlists not yet implemented");
                     }
                     else {
                         // Play song
-                        initYoutubePlay(args[0], channel, msg);
+                        music.initYoutubePlay(args[0], channel, msg);
                     }
                 }
                 else { //Search for song then play it
                     let searchTerms = args.join(' ');
 
-                    searchVideos(searchTerms, function(err, res) {
+                    music.searchVideos(searchTerms, function(err, res) {
                         if(err) {
-                            sendEmbeddedMessage(msg, "Error", ":x: "+err);
+                            discordUtil.sendEmbeddedMessage(msg, "Error", ":x: "+err);
                         }
                         else {
                             // Play song
-                            initYoutubePlay("https://youtube.com"+res, channel, msg);
+                            music.initYoutubePlay("https://youtube.com"+res, channel, msg);
                         }
                     });
                 }
@@ -781,37 +246,37 @@ let commands = {
     "stop": {
         description: "Skips the current song and clears the entire queue",
         summon: function(msg, args) {
-            let queue = getSongQueue(msg.guild);
+            let queue = music.getSongQueue(msg.guild);
             if(queue) {
                 queue.songs = [];
                 queue.dispatcher && queue.dispatcher.end('stopcmd');
             }
-            sendEmbeddedMessage(msg, "Success", ":stop_button: Stopped");
+            discordUtil.sendEmbeddedMessage(msg, "Success", ":stop_button: Stopped");
         }
     },
     "pause": {
         description: "Pauses the current song",
         summon: function(msg, args) {
-            let queue = getSongQueue(msg.guild);
+            let queue = music.getSongQueue(msg.guild);
             if(queue.dispatcher.paused) {
-                sendEmbeddedMessage(msg, "Error", ":x: Song is already paused");
+                discordUtil.sendEmbeddedMessage(msg, "Error", ":x: Song is already paused");
             }
             else {
                 queue.dispatcher.pause();
-                sendEmbeddedMessage(msg, "Success", ":pause_button: Song paused");
+                discordUtil.sendEmbeddedMessage(msg, "Success", ":pause_button: Song paused");
             }
         }
     },
     "resume": {
         description: "Resumes the current song",
         summon: function(msg, args) {
-            let queue = getSongQueue(msg.guild);
+            let queue = music.getSongQueue(msg.guild);
             if(queue.dispatcher.paused) {
                 queue.dispatcher.resume()
-                sendEmbeddedMessage(msg, "Success", ":arrow_forward: Song resumed");
+                discordUtil.sendEmbeddedMessage(msg, "Success", ":arrow_forward: Song resumed");
             }
             else {
-                sendEmbeddedMessage(msg, "Error", ":x: Song not paused");
+                discordUtil.sendEmbeddedMessage(msg, "Error", ":x: Song not paused");
             }
         }
     },
@@ -847,11 +312,11 @@ let commands = {
             //             queue.dispatcher.end('fastforward.'+beginTime);
             //         }
         
-            //         sendEmbeddedMessage(msg, "Success", ":fast_forward: Song fast forwarded to "+lengthFromSeconds(beginTime))
+            //         discordUtil.sendEmbeddedMessage(msg, "Success", ":fast_forward: Song fast forwarded to "+lengthFromSeconds(beginTime))
             //     }
             // }
 
-            sendEmbeddedMessage(msg, "Error", ":x: Feature temporarily disabled");
+            discordUtil.sendEmbeddedMessage(msg, "Error", ":x: Feature temporarily disabled");
 
         }
 
@@ -859,29 +324,29 @@ let commands = {
     "skip": {
         description: "Skips the current song",
         summon: function(msg, args) {
-            let queue = getSongQueue(msg.guild);
+            let queue = music.getSongQueue(msg.guild);
             if(queue) {
                 queue.dispatcher && queue.dispatcher.end('skipcmd');
             }
-            sendEmbeddedMessage(msg, "Success", ":track_next: Song skipped");
+            discordUtil.sendEmbeddedMessage(msg, "Success", ":track_next: Song skipped");
         }
     },
     "np": {
         description: "Shows current song info",
         summon: function(msg, args) {
-            let queue = getSongQueue(msg.guild);
+            let queue = music.getSongQueue(msg.guild);
             if(queue.songs.length>0) {
-                embedNowPlaying(msg, queue.songs[0], Math.floor(queue.dispatcher.streamTime/1000));
+                music.embedNowPlaying(msg, queue.songs[0], Math.floor(queue.dispatcher.streamTime/1000));
             }
             else {
-                sendEmbeddedMessage(msg, "Error", ":x: No song playing on this server");
+                discordUtil.sendEmbeddedMessage(msg, "Error", ":x: No song playing on this server");
             }
         }
     },
     "queue": {
         description: "Shows the queue for this server",
         summon: function(msg, args) {
-            let queue = getSongQueue(msg.guild);
+            let queue = music.getSongQueue(msg.guild);
 
             // Checking page requested
             let page = 1;
@@ -889,16 +354,16 @@ let commands = {
             let totalPages = Math.ceil((queue.songs.length-1)/10);
             if(totalPages === 0) { totalPages = 1; }
             if(page > totalPages) {
-                sendEmbeddedMessage(msg, "Error", ":x: There aren't that many songs !")
+                discordUtil.sendEmbeddedMessage(msg, "Error", ":x: There aren't that many songs !")
                 return;
             }
 
             // Checking queue
             if(queue.songs.length>0) {
-                embedQueue(msg, queue, page);
+                music.embedQueue(msg, queue, page);
             }
             else {
-                sendEmbeddedMessage(msg, "Error", ":x: The queue is empty");
+                discordUtil.sendEmbeddedMessage(msg, "Error", ":x: The queue is empty");
             }
         }
     },
@@ -906,17 +371,17 @@ let commands = {
         description: "Remove a song from the queue",
         summon: function(msg, args) {
             if(enoughArgs(0, args, msg)) {
-                let queue = getSongQueue(msg.guild);
+                let queue = music.getSongQueue(msg.guild);
                 let index = parseInt(args[0]);
                 if(index === 0) {
-                    sendEmbeddedMessage(msg, "Error", ":x: Type "+prefs.preix+"skip if you want to skip the current song.");
+                    discordUtil.sendEmbeddedMessage(msg, "Error", ":x: Type "+prefs.preix+"skip if you want to skip the current song.");
                 }
                 if(index > 0 && index < queue.songs.length) {
                     queue.songs.splice(index, 1);
-                    sendEmbeddedMessage(msg, "Success", ":white_check_mark: Song removed from queue")
+                    discordUtil.sendEmbeddedMessage(msg, "Success", ":white_check_mark: Song removed from queue")
                 }
                 else {
-                    sendEmbeddedMessage(msg, "Error", ":x: Invalid song index")
+                    discordUtil.sendEmbeddedMessage(msg, "Error", ":x: Invalid song index")
                 }
             }
         }
@@ -924,17 +389,17 @@ let commands = {
     "clear": {
         description: "Clears the entire queue",
         summon: function(msg, args) {
-            let queue = getSongQueue(msg.guild);
+            let queue = music.getSongQueue(msg.guild);
             queue.songs.splice(1, queue.songs.length-1);
-            sendEmbeddedMessage(msg, "Success", ":bomb: Queue cleared")
+            discordUtil.sendEmbeddedMessage(msg, "Success", ":bomb: Queue cleared")
         }
     },
     "autoplay": {
         description: "Toggles playing related videos automatically",
         summon: function(msg, args) {
-            let queue = getSongQueue(msg.guild);
+            let queue = music.getSongQueue(msg.guild);
             queue.autoplay = !queue.autoplay
-            sendEmbeddedMessage(msg, "Success", ":white_check_mark: Autoplay is now "+(queue.autoplay?"ON":"OFF"));
+            discordUtil.sendEmbeddedMessage(msg, "Success", ":white_check_mark: Autoplay is now "+(queue.autoplay?"ON":"OFF"));
         }
     }
 }
@@ -984,8 +449,8 @@ function processCommand(msg) {
             helpJson = {
                 "color": 8603131,
                 "author": {
-                    "name": client.user.username,
-                    "icon_url": client.user.avatarURL
+                    "name": discordUtil.getClient().user.username,
+                    "icon_url": discordUtil.getClient().user.avatarURL
                 },
                 "description": description,
                 "fields": [
@@ -1032,8 +497,8 @@ function processCommand(msg) {
                 embed: {
                     "color": 8603131,
                     "author": {
-                        "name": client.user.username,
-                        "icon_url": client.user.avatarURL
+                        "name": discordUtil.getClient().user.username,
+                        "icon_url": discordUtil.getClient().user.avatarURL
                     },
                     "description": description,
                     "footer": {
@@ -1044,7 +509,7 @@ function processCommand(msg) {
             });
         }
         else {
-            sendEmbeddedMessage(msg, "Error", ":x: This command does not exist. Type "+prefs.prefix+"help for a list of available commands.");
+            discordUtil.sendEmbeddedMessage(msg, "Error", ":x: This command does not exist. Type "+prefs.prefix+"help for a list of available commands.");
         }
         return;
     }
@@ -1055,7 +520,7 @@ function processCommand(msg) {
     }
     // If malformed or invalid command
     else if(commands[command] === undefined) {
-        sendEmbeddedMessage(msg, "Error", ":x: Invalid command. Type `"+prefs.prefix+"help` for a list of available commands")
+        discordUtil.sendEmbeddedMessage(msg, "Error", ":x: Invalid command. Type `"+prefs.prefix+"help` for a list of available commands")
         return;
     }
 
@@ -1081,18 +546,17 @@ function handleStdin() {
     });
 }
 
-
-client.on('ready', () => {
+discordUtil.getClient().on('ready', () => {
     var id = crypto.randomBytes(5).toString('hex');
-    console.log(`Logged in as ${client.user.tag}, build id: #`+id);
-    client.user.setPresence({game: {name: prefs.prefix+"help | v"+version+" #"+id}, status: 'online'});
+    console.log(`Logged in as ${discordUtil.getClient().user.tag}, build id: #`+id);
+    discordUtil.getClient().user.setPresence({game: {name: prefs.prefix+"help | v"+version+" #"+id}, status: 'online'});
     handleStdin();
 });
 
-client.on('message', msg => {
+discordUtil.getClient().on('message', msg => {
     if (msg.content.startsWith(prefs.prefix)) {
         processCommand(msg);
     }
 });
 
-client.login(prefs.token);
+discordUtil.getClient().login(prefs.token);
