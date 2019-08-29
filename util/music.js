@@ -235,27 +235,32 @@ exports.playQueue = function(msg, queue, voiceChannel, firstSong = false, timing
                         else {
                             // Checking history to avoid infinite loop
                             let relatedIdx = 0;
-                            for(id of queue.history) {
-                                if(id === info.related_videos[0].id) {
-                                    relatedIdx++;
-                                    while(info.related_videos[relatedIdx].list) relatedIdx++; // Prevents autoplaying playlists
-                                    break;
-                                }
+                            if(info.related_videos.length===0) { // No related videos
+                                discordUtil.sendEmbeddedMessage(msg, 'Error', ':x: No related videos found. Stopped autoplay.')
                             }
-                            let relatedLink = "https://www.youtube.com/watch?v="+info.related_videos[relatedIdx].id
+                            else {
+                                for(id of queue.history) {
+                                    if(id === info.related_videos[0].id) {
+                                        relatedIdx++;
+                                        while(info.related_videos[relatedIdx].list) relatedIdx++; // Prevents autoplaying playlists
+                                        break;
+                                    }
+                                }
+                                let relatedLink = "https://www.youtube.com/watch?v="+info.related_videos[relatedIdx].id
 
-                            // Adding video to queue
-                            ytdl.getInfo(relatedLink, (err2, info2) => {
-                                if(err2) {
-                                    discordUtil.sendEmbeddedMessage(msg, "Error",":x: [Autoplay] "+err2);
-                                    console.log(relatedLink);
-                                }
-                                else {
-                                    queue.songs.shift();
-                                    exports.addToQueue(queue, relatedLink, info2.player_response.videoDetails.lengthSeconds, info2, msg.author.username);
-                                    exports.playQueue(msg, queue, voiceChannel, false, "0s", info2);
-                                }
-                            });
+                                // Adding video to queue
+                                ytdl.getInfo(relatedLink, (err2, info2) => {
+                                    if(err2) {
+                                        discordUtil.sendEmbeddedMessage(msg, "Error",":x: [Autoplay] "+err2);
+                                        console.log(relatedLink);
+                                    }
+                                    else {
+                                        queue.songs.shift();
+                                        exports.addToQueue(queue, relatedLink, info2.player_response.videoDetails.lengthSeconds, info2, msg.author.username);
+                                        exports.playQueue(msg, queue, voiceChannel, false, "0s", info2);
+                                    }
+                                });
+                            }
                         }
                     });
                 }
@@ -358,6 +363,8 @@ exports.searchVideos = function(searchTerms, callback) {
         hostname: 'www.youtube.com',
         headers: { 'User-Agent': 'Zimbro' }
     }
+
+    searchTerms = encodeURI(searchTerms.split(' ').join('+'));
 
     https.get('https://www.youtube.com/results?search_query='+searchTerms.split(' ').join('+'), options, (resp) => {
         let data = '';
