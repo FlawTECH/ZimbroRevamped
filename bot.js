@@ -408,6 +408,7 @@ let commands = {
         summon: function(msg, args) {
             args = args.join(' ');
             discordUtil.sendSimpleMessage(msg, "> "+textUtil.retard(args), 'img/bob.jpg');
+            msg.delete();
         }
     }
 }
@@ -433,7 +434,7 @@ function isCleanMessage(msg) {
 function processCommand(msg) {
     if(!isCleanMessage(msg))
         return;
-    
+
     command = msg.content.toLowerCase().split(" ")[0].substring(prefs.prefix.length);
     args = msg.content.toLowerCase().split(" ");
     args.splice(0,1);
