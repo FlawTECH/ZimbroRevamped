@@ -25,9 +25,9 @@
   "dependencies": {
     "crypto": "^1.0.1",
     "discord.js": "github:discordjs/discord.js",
-    "ffmpeg-static": "^2.5.0",
+    "ffmpeg-static": "^2.6.0",
     "htmlparser2": "^3.10.1",
-    "jimp": "^0.6.4",
+    "jimp": "^0.6.8",
     "node-opus": "^0.3.2",
     "ytdl-core": "^0.29.5"
   }

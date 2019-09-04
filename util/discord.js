@@ -14,7 +14,7 @@ exports.sendSimpleMessage = function(msg, text, image=null) {
                 }
 
             ],
-            text: text
+            content: text
         })
     }
     else {

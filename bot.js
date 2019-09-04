@@ -407,7 +407,7 @@ let commands = {
         description: "Transforms this sentence into tHiS sEnTeNcE",
         summon: function(msg, args) {
             args = args.join(' ');
-            discordUtil.sendSimpleMessage(msg, textUtil.retard(args));
+            discordUtil.sendSimpleMessage(msg, "> "+textUtil.retard(args), 'img/bob.jpg');
         }
     }
 }
