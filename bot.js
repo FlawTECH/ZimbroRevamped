@@ -4,6 +4,7 @@ const jimp = require('jimp');
 const music = require('./util/music');
 const imgUtil = require('./util/image');
 const discordUtil = require('./util/discord');
+const textUtil = require('./util/text');
 
 const version = "19.08_14";
 
@@ -400,6 +401,13 @@ let commands = {
             let queue = music.getSongQueue(msg.guild);
             queue.autoplay = !queue.autoplay
             discordUtil.sendEmbeddedMessage(msg, "Success", ":white_check_mark: Autoplay is now "+(queue.autoplay?"ON":"OFF"));
+        }
+    },
+    "retard": {
+        description: "Transforms this sentence into tHiS sEnTeNcE",
+        summon: function(msg, args) {
+            args = args.join(' ');
+            discordUtil.sendSimpleMessage(msg, textUtil.retard(args));
         }
     }
 }

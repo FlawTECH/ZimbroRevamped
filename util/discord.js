@@ -4,6 +4,24 @@ const prefs = require('../settings.json');
 
 var client = null;
 
+exports.sendSimpleMessage = function(msg, text, image=null) {
+    if(image) {
+        msg.channel.send({
+            files: [
+                {
+                    attachment: image,
+                    name: 'file.jpg'
+                }
+
+            ],
+            text: text
+        })
+    }
+    else {
+        msg.channel.send(text);
+    }
+}
+
 exports.sendEmbeddedMessage = function(msg, title, text, image) {
 
     if(image !== undefined) {
