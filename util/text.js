@@ -7,11 +7,14 @@ exports.retard = function(text) {
         // Check escape sequence
         if(text[i] === '"') {
             i++;
-            while(text[i] !== '"') {
+            while(text[i] !== '"' && i < text.length) {
                 newText += text[i]
                 i++;
             }
-            i++;
+            if(i >= text.length) {
+                i=text.length-1;
+                continue;
+            }
         }
 
         if(ignoreChars.indexOf(text[i]) > -1) { // Skip
