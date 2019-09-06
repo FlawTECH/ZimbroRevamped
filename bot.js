@@ -1,6 +1,7 @@
 const prefs = require('./settings.json');
 const crypto = require('crypto');
 const jimp = require('jimp');
+const Discord = require('discord.js');
 const music = require('./util/music');
 const imgUtil = require('./util/image');
 const discordUtil = require('./util/discord');
@@ -24,6 +25,7 @@ function getCurrentCommand(msg) {
 let commands = {
     "ping": {
         description: "Shows the delay between the bot and Discord servers",
+        dmCompat: true,
         summon: function(msg, args) {
             msg.channel.send({
                 embed: {
@@ -46,6 +48,7 @@ let commands = {
     },
     "imgedit": {
         description: "Image manipulation toolbox",
+        dmCompat: true,
         subcommands: {
             "resize":{
                 description: "Resizes the image to the desired width and height",
@@ -202,6 +205,7 @@ let commands = {
     },
     "play": {
         description: "Plays a youtube video",
+        dmCompat: false,
         summon: function(msg, args) {
             if(enoughArgs(0, args, msg)) {
 
@@ -246,6 +250,7 @@ let commands = {
     },
     "stop": {
         description: "Skips the current song and clears the entire queue",
+        dmCompat: false,
         summon: function(msg, args) {
             let queue = music.getSongQueue(msg.guild);
             if(queue) {
@@ -257,6 +262,7 @@ let commands = {
     },
     "pause": {
         description: "Pauses the current song",
+        dmCompat: false,
         summon: function(msg, args) {
             let queue = music.getSongQueue(msg.guild);
             if(queue.dispatcher.paused) {
@@ -270,6 +276,7 @@ let commands = {
     },
     "resume": {
         description: "Resumes the current song",
+        dmCompat: false,
         summon: function(msg, args) {
             let queue = music.getSongQueue(msg.guild);
             if(queue.dispatcher.paused) {
@@ -283,6 +290,7 @@ let commands = {
     },
     "forward": {
         description: "Fast forwards the current song for the desired seconds",
+        dmCompat: false,
         summon: function(msg, args) {
             // if(enoughArgs(0, args, msg)) {
             //     if(parseInt(args[0]) > 0) {
@@ -324,6 +332,7 @@ let commands = {
     },
     "skip": {
         description: "Skips the current song",
+        dmCompat: false,
         summon: function(msg, args) {
             let queue = music.getSongQueue(msg.guild);
             if(queue) {
@@ -334,6 +343,7 @@ let commands = {
     },
     "np": {
         description: "Shows current song info",
+        dmCompat: false,
         summon: function(msg, args) {
             let queue = music.getSongQueue(msg.guild);
             if(queue.songs.length>0) {
@@ -346,6 +356,7 @@ let commands = {
     },
     "queue": {
         description: "Shows the queue for this server",
+        dmCompat: false,
         summon: function(msg, args) {
             let queue = music.getSongQueue(msg.guild);
 
@@ -370,6 +381,7 @@ let commands = {
     },
     "remove": {
         description: "Remove a song from the queue",
+        dmCompat: false,
         summon: function(msg, args) {
             if(enoughArgs(0, args, msg)) {
                 let queue = music.getSongQueue(msg.guild);
@@ -389,6 +401,7 @@ let commands = {
     },
     "clear": {
         description: "Clears the entire queue",
+        dmCompat: false,
         summon: function(msg, args) {
             let queue = music.getSongQueue(msg.guild);
             queue.songs.splice(1, queue.songs.length-1);
@@ -397,6 +410,7 @@ let commands = {
     },
     "autoplay": {
         description: "Toggles playing related videos automatically",
+        dmCompat: false,
         summon: function(msg, args) {
             let queue = music.getSongQueue(msg.guild);
             queue.autoplay = !queue.autoplay
@@ -405,10 +419,13 @@ let commands = {
     },
     "retard": {
         description: "Transforms this sentence into tHiS sEnTeNcE",
+        dmCompat: true,
         summon: function(msg, args) {
             args = args.join(' ');
             discordUtil.sendSimpleMessage(msg, "> "+textUtil.retard(args), 'img/bob.jpg');
-            msg.delete();
+            if(!msg.channel instanceof Discord.DMChannel) {
+                msg.delete();
+            }
         }
     }
 }
@@ -532,7 +549,11 @@ function processCommand(msg) {
         discordUtil.sendEmbeddedMessage(msg, "Error", ":x: Invalid command. Type `"+prefs.prefix+"help` for a list of available commands")
         return;
     }
-
+    if(!commands[command].dmCompat) {
+        discordUtil.sendEmbeddedMessage(msg, "Error", ":x: This command is not available in DM.")
+        return;
+    }
+    // Check command not allowed in DM
     commands[command].summon(msg, args);
 }
 
