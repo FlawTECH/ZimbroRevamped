@@ -29,6 +29,6 @@
     "htmlparser2": "^3.10.1",
     "jimp": "^0.6.8",
     "node-opus": "^0.3.2",
-    "ytdl-core": "^0.29.5"
+    "ytdl-core": "git+https://github.com/ashikmeerankutty/node-ytdl-core.git"
   }
 }

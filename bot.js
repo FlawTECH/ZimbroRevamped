@@ -549,7 +549,7 @@ function processCommand(msg) {
         discordUtil.sendEmbeddedMessage(msg, "Error", ":x: Invalid command. Type `"+prefs.prefix+"help` for a list of available commands")
         return;
     }
-    if(!commands[command].dmCompat) {
+    if(!commands[command].dmCompat && msg.channel instanceof Discord.DMChannel) {
         discordUtil.sendEmbeddedMessage(msg, "Error", ":x: This command is not available in DM.")
         return;
     }
